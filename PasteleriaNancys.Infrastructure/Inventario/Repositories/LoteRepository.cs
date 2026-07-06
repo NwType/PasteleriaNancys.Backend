@@ -44,5 +44,22 @@ namespace PasteleriaNancys.Infrastructure.Inventario.Repositories
                 .OrderByDescending(g => g.Max(l => l.FechaElaboracion))
                 .Select(g => g.Key)
                 .ToListAsync();
+
+        public async Task<List<LotePeps>> ObtenerDisponiblesParaVentaAsync(Guid idItem, string ubicacion) =>
+            await _context.LotesPeps
+                .Where(l => l.IdItem == idItem
+                    && l.Ubicacion == ubicacion
+                    && l.Estado != "Baja"
+                    && l.CantidadDisponible > 0)
+                .OrderBy(l => l.FechaElaboracion)
+                .ToListAsync();
+
+        public async Task<List<LotePeps>> ObtenerParaReponerAsync(Guid idItem) =>
+            await _context.LotesPeps
+                .Where(l => l.IdItem == idItem
+                    && l.Estado != "Baja"
+                    && l.CantidadDisponible < l.CantidadInicial)
+                .OrderByDescending(l => l.FechaElaboracion)
+                .ToListAsync();
     }
 }

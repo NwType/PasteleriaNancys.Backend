@@ -11,5 +11,7 @@ namespace PasteleriaNancys.Application.Inventario.Interfaces
         Task<List<LotePepsOrdenado>> ObtenerProximosACaducarAsync(int diasLimite);
         Task<decimal> ObtenerStockDisponibleTotalAsync(Guid idItem);
         Task<List<Guid>> ObtenerProveedoresPorItemAsync(Guid idItem);
+        Task<List<LotePeps>> ObtenerDisponiblesParaVentaAsync(Guid idItem, string ubicacion);
+        Task<List<LotePeps>> ObtenerParaReponerAsync(Guid idItem);
     }
 }

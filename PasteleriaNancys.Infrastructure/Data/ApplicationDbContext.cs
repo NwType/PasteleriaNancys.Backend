@@ -29,8 +29,10 @@ namespace PasteleriaNancys.Infrastructure.Data
         public DbSet<LotePepsOrdenado> LotesPepsOrdenados { get; set; } = null!;
 
         // Esquema: Caja
-        public DbSet<TurnoCaja> TurnosCaja { get; set; } = null!;
+        public DbSet<Turno> Turnos { get; set; } = null!;
         public DbSet<VentaPos> VentasPos { get; set; } = null!;
+        public DbSet<VentaDetalle> VentasDetalle { get; set; } = null!;
+        public DbSet<GastoExtra> GastosExtra { get; set; } = null!;
 
         // Esquema: Web (Pedidos)
         public DbSet<PedidoWeb> PedidosWeb { get; set; } = null!;
@@ -215,44 +217,71 @@ namespace PasteleriaNancys.Infrastructure.Data
             // ==========================================
             // ESQUEMA: Caja
             // ==========================================
-            modelBuilder.Entity<TurnoCaja>(entity =>
+            modelBuilder.Entity<Turno>(entity =>
             {
-                entity.ToTable("TurnoCaja", "Caja");
+                entity.ToTable("Turno", "Caja");
                 entity.HasKey(e => e.Id);
-                entity.Property(e => e.UsuarioAperturaId).IsRequired();
+                entity.Property(e => e.Id).HasColumnName("IdTurno");
+                entity.Property(e => e.IdUsuarioResponsable).HasColumnName("IdUsuario_Responsable").IsRequired();
                 entity.Property(e => e.FechaApertura).IsRequired();
-                entity.Property(e => e.Estado).IsRequired().HasMaxLength(50);
+                entity.Property(e => e.Estado).IsRequired().HasMaxLength(10);
+                entity.Property(e => e.SaldoInicial).HasColumnType("decimal(10,2)").IsRequired();
+                entity.Property(e => e.TotalIngresosSistema).HasColumnType("decimal(10,2)").IsRequired().HasDefaultValue(0m);
+                entity.Property(e => e.TotalGastosExtras).HasColumnType("decimal(10,2)").IsRequired().HasDefaultValue(0m);
+                entity.Property(e => e.DiferenciaArqueo).HasColumnType("decimal(10,2)");
 
-                // Configuración de precisión decimal para dinero
-                entity.Property(e => e.SaldoInicial)
-                    .HasColumnType("decimal(10,2)")
-                    .IsRequired();
-
-                entity.Property(e => e.TotalIngresos)
-                    .HasColumnType("decimal(10,2)")
-                    .IsRequired();
-
-                entity.Property(e => e.DiferenciaArqueo)
-                    .HasColumnType("decimal(10,2)")
-                    .IsRequired();
+                // IdUsuario_Responsable no tiene FK física en la BD real (ver vw_Turno_Responsable);
+                // la lectura cruzada con Seguridad.Usuario se resuelve a nivel de vista, no de EF.
             });
 
             modelBuilder.Entity<VentaPos>(entity =>
             {
-                entity.ToTable("VentaPos", "Caja");
+                entity.ToTable("Venta_POS", "Caja");
                 entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasColumnName("IdVenta");
                 entity.Property(e => e.FechaHora).IsRequired();
-                entity.Property(e => e.MetodoPago).IsRequired().HasMaxLength(50);
+                entity.Property(e => e.MetodoPago).IsRequired().HasMaxLength(10);
+                entity.Property(e => e.TotalPagado).HasColumnType("decimal(10,2)").IsRequired();
+                entity.Property(e => e.Anulada).IsRequired().HasDefaultValue(false);
+                entity.Property(e => e.MotivoAnulacion).HasMaxLength(200);
 
-                // Configuración de precisión decimal para dinero
-                entity.Property(e => e.TotalCobrado)
-                    .HasColumnType("decimal(10,2)")
-                    .IsRequired();
-
-                entity.HasOne(d => d.TurnoCaja)
+                entity.HasOne(d => d.Turno)
                     .WithMany(p => p.VentasPos)
-                    .HasForeignKey(d => d.TurnoCajaId)
-                    .OnDelete(DeleteBehavior.Cascade);
+                    .HasForeignKey(d => d.IdTurno)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<VentaDetalle>(entity =>
+            {
+                entity.ToTable("Venta_Detalle", "Caja");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasColumnName("IdDetalle");
+                entity.Property(e => e.Cantidad).HasColumnType("decimal(8,2)").IsRequired();
+                entity.Property(e => e.PrecioUnitario).HasColumnType("decimal(10,2)").IsRequired();
+                entity.Property(e => e.Subtotal).HasColumnType("decimal(10,2)").IsRequired();
+
+                entity.HasOne(d => d.Venta)
+                    .WithMany(p => p.Detalles)
+                    .HasForeignKey(d => d.IdVenta)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                // IdItem no tiene FK física a Inventario.Item_Catalogo (ver vw_Ventas_Dia);
+                // la lectura cruzada se resuelve a nivel de vista, no de EF.
+            });
+
+            modelBuilder.Entity<GastoExtra>(entity =>
+            {
+                entity.ToTable("Gasto_Extra", "Caja");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasColumnName("IdGasto");
+                entity.Property(e => e.Concepto).IsRequired().HasMaxLength(200);
+                entity.Property(e => e.Monto).HasColumnType("decimal(10,2)").IsRequired();
+                entity.Property(e => e.FechaHora).IsRequired();
+
+                entity.HasOne(d => d.Turno)
+                    .WithMany(p => p.GastosExtra)
+                    .HasForeignKey(d => d.IdTurno)
+                    .OnDelete(DeleteBehavior.Restrict);
             });
 
             // ==========================================

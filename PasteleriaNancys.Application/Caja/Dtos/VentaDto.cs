@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
 
-namespace PasteleriaNancys.Domain.Caja
+namespace PasteleriaNancys.Application.Caja.Dtos
 {
-    public class VentaPos
+    public class VentaDto
     {
         public Guid Id { get; set; }
         public Guid IdTurno { get; set; }
@@ -12,9 +12,6 @@ namespace PasteleriaNancys.Domain.Caja
         public string MetodoPago { get; set; } = string.Empty;
         public bool Anulada { get; set; }
         public string? MotivoAnulacion { get; set; }
-
-        // Propiedades de navegación
-        public Turno Turno { get; set; } = null!;
-        public ICollection<VentaDetalle> Detalles { get; set; } = new List<VentaDetalle>();
+        public List<VentaDetalleDto> Detalles { get; set; } = new();
     }
 }

@@ -3,8 +3,10 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using PasteleriaNancys.Api.Middleware;
+using PasteleriaNancys.Application.Caja;
 using PasteleriaNancys.Application.Inventario;
 using PasteleriaNancys.Application.Seguridad;
+using PasteleriaNancys.Infrastructure.Caja;
 using PasteleriaNancys.Infrastructure.Data;
 using PasteleriaNancys.Infrastructure.Inventario;
 using PasteleriaNancys.Infrastructure.Seguridad;
@@ -48,6 +50,9 @@ builder.Services.AddSeguridadInfrastructure(builder.Configuration);
 
 builder.Services.AddInventarioApplication();
 builder.Services.AddInventarioInfrastructure();
+
+builder.Services.AddCajaApplication();
+builder.Services.AddCajaInfrastructure();
 
 var jwtSection = builder.Configuration.GetSection("Jwt");
 builder.Services.AddAuthentication(options =>
