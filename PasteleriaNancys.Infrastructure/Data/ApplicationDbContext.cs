@@ -18,8 +18,15 @@ namespace PasteleriaNancys.Infrastructure.Data
         public DbSet<Usuario> Usuarios { get; set; } = null!;
 
         // Esquema: Inventario
-        public DbSet<CatalogoItem> CatalogoItems { get; set; } = null!;
+        public DbSet<ItemCatalogo> ItemsCatalogo { get; set; } = null!;
+        public DbSet<Proveedor> Proveedores { get; set; } = null!;
         public DbSet<LotePeps> LotesPeps { get; set; } = null!;
+        public DbSet<ViajeDespacho> ViajesDespacho { get; set; } = null!;
+        public DbSet<ViajeDetalle> ViajesDetalle { get; set; } = null!;
+        public DbSet<StockMinimo> StockMinimos { get; set; } = null!;
+        public DbSet<RecetaItem> RecetasItem { get; set; } = null!;
+        public DbSet<EventoFestivo> EventosFestivos { get; set; } = null!;
+        public DbSet<LotePepsOrdenado> LotesPepsOrdenados { get; set; } = null!;
 
         // Esquema: Caja
         public DbSet<TurnoCaja> TurnosCaja { get; set; } = null!;
@@ -72,40 +79,137 @@ namespace PasteleriaNancys.Infrastructure.Data
             // ==========================================
             // ESQUEMA: Inventario
             // ==========================================
-            modelBuilder.Entity<CatalogoItem>(entity =>
+            modelBuilder.Entity<ItemCatalogo>(entity =>
             {
-                entity.ToTable("CatalogoItem", "Inventario");
+                entity.ToTable("Item_Catalogo", "Inventario");
                 entity.HasKey(e => e.Id);
-                entity.Property(e => e.CodigoReferencia).IsRequired().HasMaxLength(50);
+                entity.Property(e => e.Id).HasColumnName("IdItem");
+                entity.Property(e => e.CodigoReferencia).IsRequired().HasMaxLength(20);
+                entity.HasIndex(e => e.CodigoReferencia).IsUnique();
                 entity.Property(e => e.Nombre).IsRequired().HasMaxLength(150);
-                entity.Property(e => e.Categoria).IsRequired().HasMaxLength(100);
-                entity.Property(e => e.TipoItem).IsRequired().HasMaxLength(100);
-                entity.Property(e => e.UnidadMedida).IsRequired().HasMaxLength(50);
+                entity.Property(e => e.Categoria).IsRequired().HasMaxLength(80);
+                entity.Property(e => e.Tipo).IsRequired().HasMaxLength(15);
+                entity.Property(e => e.UnidadMedida).IsRequired().HasMaxLength(20);
+                entity.Property(e => e.Activo).IsRequired().HasDefaultValue(true);
+            });
+
+            modelBuilder.Entity<Proveedor>(entity =>
+            {
+                entity.ToTable("Proveedor", "Inventario");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasColumnName("IdProveedor");
+                entity.Property(e => e.NombreEmpresa).IsRequired().HasMaxLength(150);
+                entity.Property(e => e.Contacto).HasMaxLength(100);
+                entity.Property(e => e.Telefono).HasMaxLength(20);
+                entity.Property(e => e.Activo).IsRequired().HasDefaultValue(true);
             });
 
             modelBuilder.Entity<LotePeps>(entity =>
             {
-                entity.ToTable("LotePeps", "Inventario");
+                entity.ToTable("Lote_PEPS", "Inventario");
                 entity.HasKey(e => e.Id);
-                entity.Property(e => e.Ubicacion).IsRequired().HasMaxLength(150);
-                entity.Property(e => e.Estado).IsRequired().HasMaxLength(50);
-
-                // Configuración de precisión decimal para inventario
-                entity.Property(e => e.CantidadInicial)
-                    .HasColumnType("decimal(8,2)")
-                    .IsRequired();
-
-                entity.Property(e => e.CantidadDisponible)
-                    .HasColumnType("decimal(8,2)")
-                    .IsRequired();
-
+                entity.Property(e => e.Id).HasColumnName("IdLote");
+                entity.Property(e => e.Ubicacion).IsRequired().HasMaxLength(30);
+                entity.Property(e => e.Estado).IsRequired().HasMaxLength(10).HasDefaultValue("Óptimo");
+                entity.Property(e => e.CantidadInicial).HasColumnType("decimal(8,2)").IsRequired();
+                entity.Property(e => e.CantidadDisponible).HasColumnType("decimal(8,2)").IsRequired();
                 entity.Property(e => e.FechaElaboracion).IsRequired();
                 entity.Property(e => e.FechaCaducidad).IsRequired();
+                entity.Property(e => e.FechaRegistro).IsRequired().HasDefaultValueSql("SYSUTCDATETIME()");
 
-                entity.HasOne(d => d.CatalogoItem)
+                entity.HasOne(d => d.Item)
                     .WithMany(p => p.LotesPeps)
-                    .HasForeignKey(d => d.CatalogoItemId)
-                    .OnDelete(DeleteBehavior.Cascade);
+                    .HasForeignKey(d => d.IdItem)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(d => d.Proveedor)
+                    .WithMany(p => p.LotesPeps)
+                    .HasForeignKey(d => d.IdProveedor)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<ViajeDespacho>(entity =>
+            {
+                entity.ToTable("Viaje_Despacho", "Inventario");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasColumnName("IdViaje");
+                entity.Property(e => e.IdUsuarioConductor).HasColumnName("IdUsuario_Conductor");
+                entity.Property(e => e.Conductor).IsRequired().HasMaxLength(100);
+                entity.Property(e => e.FechaDespacho).IsRequired().HasDefaultValueSql("SYSUTCDATETIME()");
+                entity.Property(e => e.Estado).IsRequired().HasMaxLength(20).HasDefaultValue("Programado");
+                entity.Property(e => e.Observaciones).HasMaxLength(500);
+            });
+
+            modelBuilder.Entity<ViajeDetalle>(entity =>
+            {
+                entity.ToTable("Viaje_Detalle", "Inventario");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasColumnName("IdDetalle");
+                entity.Property(e => e.CantidadEnviada).HasColumnType("decimal(8,2)").IsRequired();
+
+                entity.HasOne(d => d.Viaje)
+                    .WithMany(p => p.Detalles)
+                    .HasForeignKey(d => d.IdViaje)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(d => d.Lote)
+                    .WithMany()
+                    .HasForeignKey(d => d.IdLote)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<StockMinimo>(entity =>
+            {
+                entity.ToTable("Stock_Minimo", "Inventario");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasColumnName("IdStockMinimo");
+                entity.Property(e => e.CantidadMinima).HasColumnType("decimal(8,2)").IsRequired();
+                entity.Property(e => e.Activo).IsRequired().HasDefaultValue(true);
+                entity.HasIndex(e => e.IdItem).IsUnique();
+
+                entity.HasOne(d => d.Item)
+                    .WithMany()
+                    .HasForeignKey(d => d.IdItem)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<RecetaItem>(entity =>
+            {
+                entity.ToTable("Receta_Item", "Inventario");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasColumnName("IdReceta");
+                entity.Property(e => e.CantidadRequerida).HasColumnType("decimal(8,2)").IsRequired();
+                entity.HasIndex(e => new { e.IdItemTerminado, e.IdItemInsumo }).IsUnique();
+
+                entity.HasOne(d => d.ItemTerminado)
+                    .WithMany()
+                    .HasForeignKey(d => d.IdItemTerminado)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(d => d.ItemInsumo)
+                    .WithMany()
+                    .HasForeignKey(d => d.IdItemInsumo)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<EventoFestivo>(entity =>
+            {
+                entity.ToTable("Evento_Festivo", "Inventario");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasColumnName("IdEvento");
+                entity.Property(e => e.NombreEvento).IsRequired().HasMaxLength(150);
+                entity.Property(e => e.FechaEvento).IsRequired().HasColumnType("date");
+                entity.Property(e => e.MultiplicadorDemanda).HasColumnType("decimal(5,2)").IsRequired();
+                entity.Property(e => e.Activo).IsRequired().HasDefaultValue(true);
+                entity.Property(e => e.FechaRegistro).IsRequired().HasDefaultValueSql("SYSUTCDATETIME()");
+            });
+
+            modelBuilder.Entity<LotePepsOrdenado>(entity =>
+            {
+                entity.HasNoKey();
+                entity.ToView("vw_Lotes_PEPS_Ordenados", "Inventario");
+                entity.Property(e => e.CantidadInicial).HasColumnType("decimal(8,2)");
+                entity.Property(e => e.CantidadDisponible).HasColumnType("decimal(8,2)");
             });
 
             // ==========================================

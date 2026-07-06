@@ -1,8 +1,6 @@
-using System;
-
-namespace PasteleriaNancys.Domain.Inventario
+namespace PasteleriaNancys.Application.Inventario.Dtos
 {
-    public class LotePeps
+    public class LoteDto
     {
         public Guid Id { get; set; }
         public Guid IdItem { get; set; }
@@ -14,9 +12,6 @@ namespace PasteleriaNancys.Domain.Inventario
         public DateTime FechaCaducidad { get; set; }
         public string Estado { get; set; } = string.Empty;
         public DateTime FechaRegistro { get; set; }
-
-        // Propiedades de navegación
-        public ItemCatalogo Item { get; set; } = null!;
-        public Proveedor? Proveedor { get; set; }
+        public string? Alerta { get; set; }
     }
 }
