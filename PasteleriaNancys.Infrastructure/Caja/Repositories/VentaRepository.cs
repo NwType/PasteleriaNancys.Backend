@@ -26,10 +26,27 @@ namespace PasteleriaNancys.Infrastructure.Caja.Repositories
                 .OrderByDescending(v => v.FechaHora)
                 .ToListAsync();
 
+        public async Task<decimal> ObtenerCantidadVendidaAsync(Guid idItem, DateTime desde, DateTime hasta) =>
+            await _context.VentasDetalle
+                .Where(d => d.IdItem == idItem
+                    && !d.Venta.Anulada
+                    && d.Venta.FechaHora >= desde
+                    && d.Venta.FechaHora <= hasta)
+                .SumAsync(d => (decimal?)d.Cantidad) ?? 0m;
+
+        public async Task<List<VentaPos>> ObtenerPorRangoAsync(DateTime desde, DateTime hasta) =>
+            await _context.VentasPos
+                .Include(v => v.Detalles)
+                .Include(v => v.Turno)
+                .Where(v => !v.Anulada && v.FechaHora >= desde && v.FechaHora <= hasta)
+                .OrderByDescending(v => v.FechaHora)
+                .ToListAsync();
+
         public async Task AgregarAsync(VentaPos venta) =>
             await _context.VentasPos.AddAsync(venta);
 
         public async Task GuardarCambiosAsync() =>
-            await _context.SaveChangesAsync();
+            await _context.GuardarConControlDeConcurrenciaAsync(
+                "El turno fue modificado por otra venta al mismo tiempo. Vuelva a intentarlo.");
     }
 }

@@ -6,5 +6,7 @@ namespace PasteleriaNancys.Application.Inventario.Interfaces
     {
         Task<StockMinimoDto> ConfigurarAsync(ConfigurarStockMinimoRequest request);
         Task<List<StockMinimoDto>> ObtenerTodosAsync();
+        Task DesactivarAsync(Guid id);
+        Task EliminarAsync(Guid id);
     }
 }

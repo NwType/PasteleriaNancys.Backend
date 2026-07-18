@@ -2,6 +2,6 @@ namespace PasteleriaNancys.Application.Caja.Dtos
 {
     public class CerrarTurnoRequest
     {
-        public decimal MontoFisicoContado { get; set; }
+        public decimal? MontoFisicoContado { get; set; }
     }
 }

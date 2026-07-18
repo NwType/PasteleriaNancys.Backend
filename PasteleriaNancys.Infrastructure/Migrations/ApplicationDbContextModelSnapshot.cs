@@ -75,6 +75,15 @@ namespace PasteleriaNancys.Infrastructure.Migrations
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("IdUsuario_Responsable");
 
+                    b.Property<decimal?>("MontoFisicoContado")
+                        .HasColumnType("decimal(10,2)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
                     b.Property<decimal>("SaldoInicial")
                         .HasColumnType("decimal(10,2)");
 
@@ -89,6 +98,11 @@ namespace PasteleriaNancys.Infrastructure.Migrations
                         .HasDefaultValue(0m);
 
                     b.HasKey("Id");
+
+                    b.HasIndex("IdUsuarioResponsable")
+                        .IsUnique()
+                        .HasDatabaseName("UX_Caja_Turno_UsuarioAbierto")
+                        .HasFilter("[Estado] = 'Abierto'");
 
                     b.ToTable("Turno", "Caja");
                 });
@@ -120,6 +134,29 @@ namespace PasteleriaNancys.Infrastructure.Migrations
                     b.HasIndex("IdVenta");
 
                     b.ToTable("Venta_Detalle", "Caja");
+                });
+
+            modelBuilder.Entity("PasteleriaNancys.Domain.Caja.VentaDetalleLote", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("IdVentaDetalleLote");
+
+                    b.Property<decimal>("CantidadDescontada")
+                        .HasColumnType("decimal(8,2)");
+
+                    b.Property<Guid>("IdLote")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("IdVentaDetalle")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IdVentaDetalle");
+
+                    b.ToTable("Venta_Detalle_Lote", "Caja");
                 });
 
             modelBuilder.Entity("PasteleriaNancys.Domain.Caja.VentaPos", b =>
@@ -159,6 +196,48 @@ namespace PasteleriaNancys.Infrastructure.Migrations
                     b.ToTable("Venta_POS", "Caja");
                 });
 
+            modelBuilder.Entity("PasteleriaNancys.Domain.Inventario.ConsumoInsumo", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("IdConsumo");
+
+                    b.Property<decimal>("CantidadDescontada")
+                        .HasColumnType("decimal(8,2)");
+
+                    b.Property<DateTime>("Fecha")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<Guid?>("IdHorneada")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("IdItem")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("IdLote")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("IdUsuarioRegistro")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Motivo")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IdHorneada");
+
+                    b.HasIndex("IdItem");
+
+                    b.HasIndex("IdLote");
+
+                    b.ToTable("Consumo_Insumo", "Inventario");
+                });
+
             modelBuilder.Entity("PasteleriaNancys.Domain.Inventario.EventoFestivo", b =>
                 {
                     b.Property<Guid>("Id")
@@ -192,6 +271,42 @@ namespace PasteleriaNancys.Infrastructure.Migrations
                     b.ToTable("Evento_Festivo", "Inventario");
                 });
 
+            modelBuilder.Entity("PasteleriaNancys.Domain.Inventario.Horneada", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("IdHorneada");
+
+                    b.Property<int>("CantidadBatidas")
+                        .HasColumnType("int");
+
+                    b.Property<int>("CantidadBatidasChocolateExtra")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<DateTime>("Fecha")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime>("FechaRegistro")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<Guid>("IdUsuarioRegistro")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Horneada", "Inventario", t =>
+                        {
+                            t.HasCheckConstraint("CK_Inventario_Horneada_BatidasChocolateExtra", "[CantidadBatidasChocolateExtra] >= 0 AND [CantidadBatidasChocolateExtra] <= [CantidadBatidas] - 1");
+
+                            t.HasCheckConstraint("CK_Inventario_Horneada_CantidadBatidas", "[CantidadBatidas] > 0");
+                        });
+                });
+
             modelBuilder.Entity("PasteleriaNancys.Domain.Inventario.ItemCatalogo", b =>
                 {
                     b.Property<Guid>("Id")
@@ -209,20 +324,63 @@ namespace PasteleriaNancys.Infrastructure.Migrations
                         .HasMaxLength(80)
                         .HasColumnType("nvarchar(80)");
 
+                    b.Property<string>("CategoriaPersonalizacion")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
                     b.Property<string>("CodigoReferencia")
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("ColorDecoracion")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("Descripcion")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<bool>("EsPersonalizable")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<Guid?>("IdInsumoCrema")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("IdInsumoRelleno")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ImagenUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
 
                     b.Property<string>("Nombre")
                         .IsRequired()
                         .HasMaxLength(150)
                         .HasColumnType("nvarchar(150)");
 
+                    b.Property<int?>("NumeroPorciones")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("PrecioUnitario")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("decimal(10,2)")
+                        .HasDefaultValue(0m);
+
                     b.Property<string>("Tipo")
                         .IsRequired()
                         .HasMaxLength(15)
                         .HasColumnType("nvarchar(15)");
+
+                    b.Property<string>("TipoCremaAsociado")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("TipoMasa")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
                     b.Property<string>("UnidadMedida")
                         .IsRequired()
@@ -234,7 +392,20 @@ namespace PasteleriaNancys.Infrastructure.Migrations
                     b.HasIndex("CodigoReferencia")
                         .IsUnique();
 
-                    b.ToTable("Item_Catalogo", "Inventario");
+                    b.HasIndex("IdInsumoCrema");
+
+                    b.HasIndex("IdInsumoRelleno");
+
+                    b.ToTable("Item_Catalogo", "Inventario", t =>
+                        {
+                            t.HasCheckConstraint("CK_Inventario_Item_Categoria", "([Tipo]='Terminado' AND [Categoria] IN ('Tortas Clásicas','Tortas Personalizables')) OR ([Tipo]='MateriaPrima' AND [Categoria] IN ('Harinas y Secos','Lácteos y Cremas','Colorantes y Jaleas','Rellenos','Empaques'))");
+
+                            t.HasCheckConstraint("CK_Inventario_Item_CategoriaPersonalizacion", "[CategoriaPersonalizacion] IS NULL OR [CategoriaPersonalizacion] IN ('Relleno','Crema','Colorante')");
+
+                            t.HasCheckConstraint("CK_Inventario_Item_TipoCremaAsociado", "[TipoCremaAsociado] IS NULL OR [TipoCremaAsociado] IN ('Mascrean','CremaPil','Fondant')");
+
+                            t.HasCheckConstraint("CK_Inventario_Item_TipoMasa", "[TipoMasa] IS NULL OR [TipoMasa] IN ('Vainilla','Chocolate','Mixto')");
+                        });
                 });
 
             modelBuilder.Entity("PasteleriaNancys.Domain.Inventario.LotePeps", b =>
@@ -487,36 +658,279 @@ namespace PasteleriaNancys.Infrastructure.Migrations
                     b.ToTable("Viaje_Detalle", "Inventario");
                 });
 
-            modelBuilder.Entity("PasteleriaNancys.Domain.Pedidos.PedidoWeb", b =>
+            modelBuilder.Entity("PasteleriaNancys.Domain.Pedidos.PagoQr", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("IdPago");
 
-                    b.Property<string>("Estado")
-                        .IsRequired()
+                    b.Property<string>("CanalPago")
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
-                    b.Property<DateTime>("FechaEntrega")
+                    b.Property<string>("CodigoRespuestaBanco")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<decimal?>("Diferencia")
+                        .HasColumnType("decimal(10,2)");
+
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(15)
+                        .HasColumnType("nvarchar(15)")
+                        .HasDefaultValue("Pendiente");
+
+                    b.Property<DateTime>("FechaGeneracion")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<DateTime?>("FechaPago")
                         .HasColumnType("datetime2");
+
+                    b.Property<Guid>("IdPedido")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal?>("MontoConfirmado")
+                        .HasColumnType("decimal(10,2)");
+
+                    b.Property<decimal>("MontoSolicitado")
+                        .HasColumnType("decimal(10,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IdPedido");
+
+                    b.ToTable("Pago_QR", "Web");
+                });
+
+            modelBuilder.Entity("PasteleriaNancys.Domain.Pedidos.PedidoCliente", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("IdPedido");
+
+                    b.Property<string>("CodigoQrReferencia")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("CodigoQR_Referencia");
+
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("Pendiente QR");
+
+                    b.Property<DateTime>("FechaEntregaSolicitada")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("FechaEntrega_Solicitada");
+
+                    b.Property<DateTime>("FechaSolicitud")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<Guid?>("IdUsuarioVendedora")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("IdUsuario_Vendedora");
 
                     b.Property<string>("NombreCliente")
                         .IsRequired()
                         .HasMaxLength(150)
                         .HasColumnType("nvarchar(150)");
 
-                    b.Property<string>("Telefono")
+                    b.Property<string>("Observaciones")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<decimal>("TotalCotizado")
+                        .HasColumnType("decimal(10,2)");
+
+                    b.Property<string>("WhatsApp")
                         .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Pedido_Cliente", "Web");
+                });
+
+            modelBuilder.Entity("PasteleriaNancys.Domain.Pedidos.PedidoConfiguracion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("IdConfiguracion");
+
+                    b.Property<int>("CantidadVelasNormales")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<string>("ColorDecoracion")
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
-                    b.Property<decimal>("Total")
+                    b.Property<string>("DedicatoriaDetalle")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("Dedicatoria_Detalle");
+
+                    b.Property<Guid?>("IdInsumoColorDecoracion")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("IdInsumo_ColorDecoracion");
+
+                    b.Property<Guid?>("IdInsumoCrema")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("IdInsumo_Crema");
+
+                    b.Property<Guid?>("IdInsumoRelleno")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("IdInsumo_Relleno");
+
+                    b.Property<Guid?>("IdInsumoSaborMasa")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("IdInsumo_SaborMasa");
+
+                    b.Property<Guid?>("IdItemProductoBase")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("IdItem_ProductoBase");
+
+                    b.Property<Guid>("IdPedido")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ImagenReferenciaUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)")
+                        .HasColumnName("ImagenReferencia_URL");
+
+                    b.Property<int?>("NumeroPorciones")
+                        .HasColumnType("int");
+
+                    b.Property<decimal?>("PorcentajeAnticipo")
+                        .HasColumnType("decimal(5,2)")
+                        .HasColumnName("Porcentaje_Anticipo");
+
+                    b.Property<string>("SaborMasa")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("TamanoRacion")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("TipoCrema")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("TipoMasa")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("TipoRelleno")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("VelaNumerica")
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IdPedido")
+                        .IsUnique();
+
+                    b.ToTable("Pedido_Configuracion", "Web", t =>
+                        {
+                            t.HasCheckConstraint("CK_Web_PedidoConfiguracion_TipoCrema", "[TipoCrema] IS NULL OR [TipoCrema] IN ('Mascrean','CremaPil','Fondant')");
+
+                            t.HasCheckConstraint("CK_Web_PedidoConfiguracion_TipoMasa", "[TipoMasa] IS NULL OR [TipoMasa] IN ('Vainilla','Chocolate','Mixto')");
+                        });
+                });
+
+            modelBuilder.Entity("PasteleriaNancys.Domain.Pedidos.PortafolioImagen", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("IdPortafolioImagen");
+
+                    b.Property<bool>("Activo")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<string>("Categoria")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("Descripcion")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<DateTime>("FechaCreacion")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<string>("ImagenUrl")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("Orden")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Portafolio_Imagen", "Web", t =>
+                        {
+                            t.HasCheckConstraint("CK_Web_PortafolioImagen_Categoria", "[Categoria] IN ('Bodas','QuinceAnos','Bautizos','BabyShowers','CumpleanosEspeciales','TortasTematicas')");
+                        });
+                });
+
+            modelBuilder.Entity("PasteleriaNancys.Domain.Pedidos.TablaPrecioPorciones", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("IdTablaPrecio");
+
+                    b.Property<bool>("Activo")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<string>("Descripcion")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<Guid?>("IdItemTerminado")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("NumeroPorciones")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("Precio")
                         .HasColumnType("decimal(10,2)");
 
                     b.HasKey("Id");
 
-                    b.ToTable("PedidoWeb", "Web");
+                    b.HasIndex("IdItemTerminado", "NumeroPorciones")
+                        .IsUnique()
+                        .HasFilter("[IdItemTerminado] IS NOT NULL");
+
+                    b.ToTable("Tabla_Precio_Porciones", "Web");
                 });
 
             modelBuilder.Entity("PasteleriaNancys.Domain.Seguridad.Rol", b =>
@@ -634,6 +1048,17 @@ namespace PasteleriaNancys.Infrastructure.Migrations
                     b.Navigation("Venta");
                 });
 
+            modelBuilder.Entity("PasteleriaNancys.Domain.Caja.VentaDetalleLote", b =>
+                {
+                    b.HasOne("PasteleriaNancys.Domain.Caja.VentaDetalle", "VentaDetalle")
+                        .WithMany()
+                        .HasForeignKey("IdVentaDetalle")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("VentaDetalle");
+                });
+
             modelBuilder.Entity("PasteleriaNancys.Domain.Caja.VentaPos", b =>
                 {
                     b.HasOne("PasteleriaNancys.Domain.Caja.Turno", "Turno")
@@ -643,6 +1068,49 @@ namespace PasteleriaNancys.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Turno");
+                });
+
+            modelBuilder.Entity("PasteleriaNancys.Domain.Inventario.ConsumoInsumo", b =>
+                {
+                    b.HasOne("PasteleriaNancys.Domain.Inventario.Horneada", "Horneada")
+                        .WithMany("Consumos")
+                        .HasForeignKey("IdHorneada")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("PasteleriaNancys.Domain.Inventario.ItemCatalogo", "Item")
+                        .WithMany()
+                        .HasForeignKey("IdItem")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PasteleriaNancys.Domain.Inventario.LotePeps", "Lote")
+                        .WithMany()
+                        .HasForeignKey("IdLote")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Horneada");
+
+                    b.Navigation("Item");
+
+                    b.Navigation("Lote");
+                });
+
+            modelBuilder.Entity("PasteleriaNancys.Domain.Inventario.ItemCatalogo", b =>
+                {
+                    b.HasOne("PasteleriaNancys.Domain.Inventario.ItemCatalogo", "InsumoCrema")
+                        .WithMany()
+                        .HasForeignKey("IdInsumoCrema")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("PasteleriaNancys.Domain.Inventario.ItemCatalogo", "InsumoRelleno")
+                        .WithMany()
+                        .HasForeignKey("IdInsumoRelleno")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("InsumoCrema");
+
+                    b.Navigation("InsumoRelleno");
                 });
 
             modelBuilder.Entity("PasteleriaNancys.Domain.Inventario.LotePeps", b =>
@@ -712,6 +1180,28 @@ namespace PasteleriaNancys.Infrastructure.Migrations
                     b.Navigation("Viaje");
                 });
 
+            modelBuilder.Entity("PasteleriaNancys.Domain.Pedidos.PagoQr", b =>
+                {
+                    b.HasOne("PasteleriaNancys.Domain.Pedidos.PedidoCliente", "Pedido")
+                        .WithMany("PagosQr")
+                        .HasForeignKey("IdPedido")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Pedido");
+                });
+
+            modelBuilder.Entity("PasteleriaNancys.Domain.Pedidos.PedidoConfiguracion", b =>
+                {
+                    b.HasOne("PasteleriaNancys.Domain.Pedidos.PedidoCliente", "Pedido")
+                        .WithOne("Configuracion")
+                        .HasForeignKey("PasteleriaNancys.Domain.Pedidos.PedidoConfiguracion", "IdPedido")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Pedido");
+                });
+
             modelBuilder.Entity("PasteleriaNancys.Domain.Seguridad.Usuario", b =>
                 {
                     b.HasOne("PasteleriaNancys.Domain.Seguridad.Rol", "Rol")
@@ -735,6 +1225,11 @@ namespace PasteleriaNancys.Infrastructure.Migrations
                     b.Navigation("Detalles");
                 });
 
+            modelBuilder.Entity("PasteleriaNancys.Domain.Inventario.Horneada", b =>
+                {
+                    b.Navigation("Consumos");
+                });
+
             modelBuilder.Entity("PasteleriaNancys.Domain.Inventario.ItemCatalogo", b =>
                 {
                     b.Navigation("LotesPeps");
@@ -748,6 +1243,13 @@ namespace PasteleriaNancys.Infrastructure.Migrations
             modelBuilder.Entity("PasteleriaNancys.Domain.Inventario.ViajeDespacho", b =>
                 {
                     b.Navigation("Detalles");
+                });
+
+            modelBuilder.Entity("PasteleriaNancys.Domain.Pedidos.PedidoCliente", b =>
+                {
+                    b.Navigation("Configuracion");
+
+                    b.Navigation("PagosQr");
                 });
 
             modelBuilder.Entity("PasteleriaNancys.Domain.Seguridad.Rol", b =>

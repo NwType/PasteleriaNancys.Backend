@@ -7,7 +7,7 @@ namespace PasteleriaNancys.Application.Inventario.Interfaces
         Task<ViajeDto> CrearViajeAsync(CrearViajeRequest request);
         Task<List<ViajeDto>> ObtenerTodosAsync();
         Task<ViajeDto> ObtenerPorIdAsync(Guid id);
-        Task<ViajeDto> AgregarLoteAsync(Guid idViaje, AgregarLoteAlViajeRequest request);
+        Task<ViajeDto> AgregarProductoAsync(Guid idViaje, AgregarProductoAlViajeRequest request);
         Task<ViajeDto> ConfirmarEntregaAsync(Guid idViaje);
     }
 }

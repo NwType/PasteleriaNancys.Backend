@@ -15,10 +15,14 @@ namespace PasteleriaNancys.Infrastructure.Inventario.Repositories
         }
 
         public async Task<ViajeDespacho?> ObtenerPorIdAsync(Guid id) =>
-            await _context.ViajesDespacho.Include(v => v.Detalles).FirstOrDefaultAsync(v => v.Id == id);
+            await _context.ViajesDespacho
+                .Include(v => v.Detalles).ThenInclude(d => d.Lote).ThenInclude(l => l.Item)
+                .FirstOrDefaultAsync(v => v.Id == id);
 
         public async Task<List<ViajeDespacho>> ObtenerTodosAsync() =>
-            await _context.ViajesDespacho.Include(v => v.Detalles).AsNoTracking().ToListAsync();
+            await _context.ViajesDespacho
+                .Include(v => v.Detalles).ThenInclude(d => d.Lote).ThenInclude(l => l.Item)
+                .AsNoTracking().ToListAsync();
 
         public async Task AgregarAsync(ViajeDespacho viaje) =>
             await _context.ViajesDespacho.AddAsync(viaje);

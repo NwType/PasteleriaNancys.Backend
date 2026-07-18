@@ -6,9 +6,10 @@ namespace PasteleriaNancys.Application.Seguridad.Interfaces
     {
         Task<UsuarioDto> CrearAsync(CrearUsuarioRequest request);
         Task<List<UsuarioDto>> ObtenerTodosAsync();
+        Task<bool> ExisteAlgunoAsync();
         Task<UsuarioDto> ObtenerPorIdAsync(Guid id);
         Task<UsuarioDto> ActualizarAsync(Guid id, ActualizarUsuarioRequest request);
-        Task DesactivarAsync(Guid id);
+        Task DesactivarAsync(Guid id, Guid idSolicitante);
         Task DesbloquearAsync(Guid id);
     }
 }

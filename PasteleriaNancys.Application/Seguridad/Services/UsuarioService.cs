@@ -70,6 +70,8 @@ namespace PasteleriaNancys.Application.Seguridad.Services
             return usuarios.Select(u => MapearDto(u, u.Rol.Nombre)).ToList();
         }
 
+        public Task<bool> ExisteAlgunoAsync() => _usuarioRepository.ExisteAlgunoAsync();
+
         public async Task<UsuarioDto> ObtenerPorIdAsync(Guid id)
         {
             var usuario = await _usuarioRepository.ObtenerPorIdAsync(id)
@@ -112,8 +114,13 @@ namespace PasteleriaNancys.Application.Seguridad.Services
             return MapearDto(usuario, rol.Nombre);
         }
 
-        public async Task DesactivarAsync(Guid id)
+        public async Task DesactivarAsync(Guid id, Guid idSolicitante)
         {
+            if (id == idSolicitante)
+            {
+                throw new ReglaNegocioException("No puede desactivar su propia cuenta.");
+            }
+
             var usuario = await _usuarioRepository.ObtenerPorIdAsync(id)
                 ?? throw new NoEncontradoException($"No se encontró el usuario con id {id}.");
 

@@ -12,11 +12,13 @@ namespace PasteleriaNancys.Application.Inventario.Services
 
         private readonly IViajeRepository _viajeRepository;
         private readonly ILoteRepository _loteRepository;
+        private readonly IItemCatalogoRepository _itemCatalogoRepository;
 
-        public DespachoService(IViajeRepository viajeRepository, ILoteRepository loteRepository)
+        public DespachoService(IViajeRepository viajeRepository, ILoteRepository loteRepository, IItemCatalogoRepository itemCatalogoRepository)
         {
             _viajeRepository = viajeRepository;
             _loteRepository = loteRepository;
+            _itemCatalogoRepository = itemCatalogoRepository;
         }
 
         public async Task<ViajeDto> CrearViajeAsync(CrearViajeRequest request)
@@ -56,30 +58,58 @@ namespace PasteleriaNancys.Application.Inventario.Services
             return MapearDto(viaje);
         }
 
-        public async Task<ViajeDto> AgregarLoteAsync(Guid idViaje, AgregarLoteAlViajeRequest request)
+        public async Task<ViajeDto> AgregarProductoAsync(Guid idViaje, AgregarProductoAlViajeRequest request)
         {
             var viaje = await _viajeRepository.ObtenerPorIdAsync(idViaje)
                 ?? throw new NoEncontradoException($"No se encontró el viaje con id {idViaje}.");
 
-            var lote = await _loteRepository.ObtenerPorIdAsync(request.IdLote)
-                ?? throw new NoEncontradoException($"No se encontró el lote con id {request.IdLote}.");
-
-            if (lote.Ubicacion != UbicacionOrigen)
+            if (viaje.Estado == "Entregado")
             {
-                throw new ReglaNegocioException($"El lote no se encuentra disponible en '{UbicacionOrigen}'.");
+                throw new ReglaNegocioException("No se pueden agregar productos a un viaje que ya fue entregado.");
             }
 
-            if (request.CantidadEnviada > lote.CantidadDisponible)
+            var item = await _itemCatalogoRepository.ObtenerPorIdAsync(request.IdItem)
+                ?? throw new NoEncontradoException($"No se encontró el producto con id {request.IdItem}.");
+
+            if (item.Tipo != "Terminado" || !item.Activo)
             {
-                throw new ReglaNegocioException("Cantidad insuficiente en el lote seleccionado.");
+                throw new ReglaNegocioException("Solo se pueden agregar tortas (productos terminados activos) al viaje.");
             }
+
+            if (request.Cantidad <= 0)
+            {
+                throw new ReglaNegocioException("La cantidad debe ser mayor a 0.");
+            }
+
+            if (request.FechaCaducidad.Date <= DateTime.UtcNow.Date)
+            {
+                throw new ReglaNegocioException("La fecha de caducidad debe ser posterior a hoy.");
+            }
+
+            // El viaje ES el registro de la horneada: se crea un lote nuevo en San Mateo ya
+            // comprometido al 100% a este viaje (CantidadDisponible = 0) — no queda stock suelto
+            // en origen porque no hay excedente, todo lo horneado se envía.
+            var loteOrigen = new LotePeps
+            {
+                Id = Guid.NewGuid(),
+                IdItem = item.Id,
+                IdProveedor = null,
+                Ubicacion = UbicacionOrigen,
+                CantidadInicial = request.Cantidad,
+                CantidadDisponible = 0,
+                FechaElaboracion = DateTime.UtcNow,
+                FechaCaducidad = request.FechaCaducidad,
+                Estado = "Óptimo",
+                FechaRegistro = DateTime.UtcNow
+            };
+            await _loteRepository.AgregarAsync(loteOrigen);
 
             var detalle = new ViajeDetalle
             {
                 Id = Guid.NewGuid(),
                 IdViaje = idViaje,
-                IdLote = request.IdLote,
-                CantidadEnviada = request.CantidadEnviada
+                IdLote = loteOrigen.Id,
+                CantidadEnviada = request.Cantidad
             };
 
             await _viajeRepository.AgregarDetalleAsync(detalle);
@@ -103,10 +133,27 @@ namespace PasteleriaNancys.Application.Inventario.Services
 
             foreach (var detalle in viaje.Detalles)
             {
-                var lote = await _loteRepository.ObtenerPorIdAsync(detalle.IdLote)
+                var loteOrigen = await _loteRepository.ObtenerPorIdAsync(detalle.IdLote)
                     ?? throw new NoEncontradoException($"No se encontró el lote con id {detalle.IdLote}.");
 
-                lote.Ubicacion = UbicacionDestino;
+                // La cantidad enviada llega como un lote propio en el destino (no se mueve el lote
+                // completo) — lo que no se envió queda correctamente en el origen con su cantidad
+                // real restante.
+                var loteDestino = new LotePeps
+                {
+                    Id = Guid.NewGuid(),
+                    IdItem = loteOrigen.IdItem,
+                    IdProveedor = loteOrigen.IdProveedor,
+                    Ubicacion = UbicacionDestino,
+                    Estado = loteOrigen.Estado,
+                    CantidadInicial = detalle.CantidadEnviada,
+                    CantidadDisponible = detalle.CantidadEnviada,
+                    FechaElaboracion = loteOrigen.FechaElaboracion,
+                    FechaCaducidad = loteOrigen.FechaCaducidad,
+                    FechaRegistro = DateTime.UtcNow
+                };
+
+                await _loteRepository.AgregarAsync(loteDestino);
             }
 
             viaje.Estado = "Entregado";
@@ -127,7 +174,12 @@ namespace PasteleriaNancys.Application.Inventario.Services
             {
                 Id = d.Id,
                 IdLote = d.IdLote,
-                CantidadEnviada = d.CantidadEnviada
+                CantidadEnviada = d.CantidadEnviada,
+                IdItem = d.Lote.IdItem,
+                NombreItem = d.Lote.Item.Nombre,
+                ImagenUrl = d.Lote.Item.ImagenUrl,
+                PrecioUnitario = d.Lote.Item.PrecioUnitario,
+                ColorDecoracion = d.Lote.Item.ColorDecoracion
             }).ToList()
         };
     }

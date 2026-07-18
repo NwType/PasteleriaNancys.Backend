@@ -1,3 +1,4 @@
+using PasteleriaNancys.Domain.Caja;
 using PasteleriaNancys.Domain.Inventario;
 
 namespace PasteleriaNancys.Application.Inventario.Interfaces
@@ -10,8 +11,11 @@ namespace PasteleriaNancys.Application.Inventario.Interfaces
         Task GuardarCambiosAsync();
         Task<List<LotePepsOrdenado>> ObtenerProximosACaducarAsync(int diasLimite);
         Task<decimal> ObtenerStockDisponibleTotalAsync(Guid idItem);
+        Task<decimal> ObtenerStockDisponiblePorUbicacionAsync(Guid idItem, string ubicacion);
         Task<List<Guid>> ObtenerProveedoresPorItemAsync(Guid idItem);
         Task<List<LotePeps>> ObtenerDisponiblesParaVentaAsync(Guid idItem, string ubicacion);
         Task<List<LotePeps>> ObtenerParaReponerAsync(Guid idItem);
+        Task RegistrarConsumoAsync(List<VentaDetalleLote> consumos);
+        Task<List<VentaDetalleLote>> ObtenerConsumosPorVentaDetalleAsync(Guid idVentaDetalle);
     }
 }

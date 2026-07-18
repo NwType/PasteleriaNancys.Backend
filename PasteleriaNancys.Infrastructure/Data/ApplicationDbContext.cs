@@ -27,15 +27,22 @@ namespace PasteleriaNancys.Infrastructure.Data
         public DbSet<RecetaItem> RecetasItem { get; set; } = null!;
         public DbSet<EventoFestivo> EventosFestivos { get; set; } = null!;
         public DbSet<LotePepsOrdenado> LotesPepsOrdenados { get; set; } = null!;
+        public DbSet<Horneada> Horneadas { get; set; } = null!;
+        public DbSet<ConsumoInsumo> ConsumosInsumo { get; set; } = null!;
 
         // Esquema: Caja
         public DbSet<Turno> Turnos { get; set; } = null!;
         public DbSet<VentaPos> VentasPos { get; set; } = null!;
         public DbSet<VentaDetalle> VentasDetalle { get; set; } = null!;
+        public DbSet<VentaDetalleLote> VentasDetalleLote { get; set; } = null!;
         public DbSet<GastoExtra> GastosExtra { get; set; } = null!;
 
         // Esquema: Web (Pedidos)
-        public DbSet<PedidoWeb> PedidosWeb { get; set; } = null!;
+        public DbSet<PedidoCliente> PedidosCliente { get; set; } = null!;
+        public DbSet<PedidoConfiguracion> PedidosConfiguracion { get; set; } = null!;
+        public DbSet<PagoQr> PagosQr { get; set; } = null!;
+        public DbSet<TablaPrecioPorciones> TablaPrecioPorciones { get; set; } = null!;
+        public DbSet<PortafolioImagen> PortafolioImagenes { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -92,7 +99,39 @@ namespace PasteleriaNancys.Infrastructure.Data
                 entity.Property(e => e.Categoria).IsRequired().HasMaxLength(80);
                 entity.Property(e => e.Tipo).IsRequired().HasMaxLength(15);
                 entity.Property(e => e.UnidadMedida).IsRequired().HasMaxLength(20);
+                entity.Property(e => e.PrecioUnitario).HasColumnType("decimal(10,2)").IsRequired().HasDefaultValue(0m);
+                entity.Property(e => e.NumeroPorciones);
+                entity.Property(e => e.EsPersonalizable).IsRequired().HasDefaultValue(false);
+                entity.Property(e => e.CategoriaPersonalizacion).HasMaxLength(20);
+                entity.Property(e => e.TipoCremaAsociado).HasMaxLength(20);
+                entity.Property(e => e.ImagenUrl).HasMaxLength(500);
+                entity.Property(e => e.Descripcion).HasMaxLength(1000);
+                entity.Property(e => e.ColorDecoracion).HasMaxLength(50);
+                entity.Property(e => e.TipoMasa).HasMaxLength(20);
                 entity.Property(e => e.Activo).IsRequired().HasDefaultValue(true);
+
+                entity.ToTable(t =>
+                {
+                    t.HasCheckConstraint("CK_Inventario_Item_CategoriaPersonalizacion",
+                        "[CategoriaPersonalizacion] IS NULL OR [CategoriaPersonalizacion] IN ('Relleno','Crema','Colorante')");
+                    t.HasCheckConstraint("CK_Inventario_Item_TipoCremaAsociado",
+                        "[TipoCremaAsociado] IS NULL OR [TipoCremaAsociado] IN ('Mascrean','CremaPil','Fondant')");
+                    t.HasCheckConstraint("CK_Inventario_Item_TipoMasa",
+                        "[TipoMasa] IS NULL OR [TipoMasa] IN ('Vainilla','Chocolate','Mixto')");
+                    t.HasCheckConstraint("CK_Inventario_Item_Categoria",
+                        "([Tipo]='Terminado' AND [Categoria] IN ('Tortas Clásicas','Tortas Personalizables')) " +
+                        "OR ([Tipo]='MateriaPrima' AND [Categoria] IN ('Harinas y Secos','Lácteos y Cremas','Colorantes y Jaleas','Rellenos','Empaques'))");
+                });
+
+                entity.HasOne(e => e.InsumoRelleno)
+                    .WithMany()
+                    .HasForeignKey(e => e.IdInsumoRelleno)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(e => e.InsumoCrema)
+                    .WithMany()
+                    .HasForeignKey(e => e.IdInsumoCrema)
+                    .OnDelete(DeleteBehavior.Restrict);
             });
 
             modelBuilder.Entity<Proveedor>(entity =>
@@ -214,6 +253,54 @@ namespace PasteleriaNancys.Infrastructure.Data
                 entity.Property(e => e.CantidadDisponible).HasColumnType("decimal(8,2)");
             });
 
+            modelBuilder.Entity<Horneada>(entity =>
+            {
+                entity.ToTable("Horneada", "Inventario");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasColumnName("IdHorneada");
+                entity.Property(e => e.Fecha).IsRequired().HasColumnType("date");
+                entity.Property(e => e.CantidadBatidas).IsRequired();
+                entity.Property(e => e.CantidadBatidasChocolateExtra).IsRequired().HasDefaultValue(0);
+                // IdUsuarioRegistro: cross-schema hacia Seguridad.Usuario, sin FK física (mismo patrón que Turno/Pedido_Cliente).
+                entity.Property(e => e.IdUsuarioRegistro).IsRequired();
+                entity.Property(e => e.FechaRegistro).IsRequired().HasDefaultValueSql("SYSUTCDATETIME()");
+
+                entity.ToTable(t =>
+                {
+                    t.HasCheckConstraint("CK_Inventario_Horneada_CantidadBatidas", "[CantidadBatidas] > 0");
+                    t.HasCheckConstraint(
+                        "CK_Inventario_Horneada_BatidasChocolateExtra",
+                        "[CantidadBatidasChocolateExtra] >= 0 AND [CantidadBatidasChocolateExtra] <= [CantidadBatidas] - 1");
+                });
+            });
+
+            modelBuilder.Entity<ConsumoInsumo>(entity =>
+            {
+                entity.ToTable("Consumo_Insumo", "Inventario");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasColumnName("IdConsumo");
+                entity.Property(e => e.CantidadDescontada).HasColumnType("decimal(8,2)").IsRequired();
+                entity.Property(e => e.Motivo).HasMaxLength(200);
+                entity.Property(e => e.Fecha).IsRequired().HasDefaultValueSql("SYSUTCDATETIME()");
+                // IdUsuarioRegistro: cross-schema hacia Seguridad.Usuario, sin FK física.
+                entity.Property(e => e.IdUsuarioRegistro).IsRequired();
+
+                entity.HasOne(e => e.Horneada)
+                    .WithMany(h => h.Consumos)
+                    .HasForeignKey(e => e.IdHorneada)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(e => e.Item)
+                    .WithMany()
+                    .HasForeignKey(e => e.IdItem)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(e => e.Lote)
+                    .WithMany()
+                    .HasForeignKey(e => e.IdLote)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
             // ==========================================
             // ESQUEMA: Caja
             // ==========================================
@@ -228,7 +315,17 @@ namespace PasteleriaNancys.Infrastructure.Data
                 entity.Property(e => e.SaldoInicial).HasColumnType("decimal(10,2)").IsRequired();
                 entity.Property(e => e.TotalIngresosSistema).HasColumnType("decimal(10,2)").IsRequired().HasDefaultValue(0m);
                 entity.Property(e => e.TotalGastosExtras).HasColumnType("decimal(10,2)").IsRequired().HasDefaultValue(0m);
+                entity.Property(e => e.MontoFisicoContado).HasColumnType("decimal(10,2)");
                 entity.Property(e => e.DiferenciaArqueo).HasColumnType("decimal(10,2)");
+                entity.Property(e => e.RowVersion).IsRowVersion();
+
+                // Evita que dos aperturas simultáneas del mismo usuario creen dos turnos "Abierto"
+                // a la vez (antes solo se prevenía con un check-then-act en la app, con condición
+                // de carrera real bajo peticiones concurrentes).
+                entity.HasIndex(e => e.IdUsuarioResponsable)
+                    .IsUnique()
+                    .HasFilter("[Estado] = 'Abierto'")
+                    .HasDatabaseName("UX_Caja_Turno_UsuarioAbierto");
 
                 // IdUsuario_Responsable no tiene FK física en la BD real (ver vw_Turno_Responsable);
                 // la lectura cruzada con Seguridad.Usuario se resuelve a nivel de vista, no de EF.
@@ -269,6 +366,22 @@ namespace PasteleriaNancys.Infrastructure.Data
                 // la lectura cruzada se resuelve a nivel de vista, no de EF.
             });
 
+            modelBuilder.Entity<VentaDetalleLote>(entity =>
+            {
+                entity.ToTable("Venta_Detalle_Lote", "Caja");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasColumnName("IdVentaDetalleLote");
+                entity.Property(e => e.CantidadDescontada).HasColumnType("decimal(8,2)").IsRequired();
+
+                entity.HasOne(d => d.VentaDetalle)
+                    .WithMany()
+                    .HasForeignKey(d => d.IdVentaDetalle)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                // IdLote no tiene FK física a Inventario.Lote_PEPS, mismo patrón cross-schema que
+                // Venta_Detalle.IdItem.
+            });
+
             modelBuilder.Entity<GastoExtra>(entity =>
             {
                 entity.ToTable("Gasto_Extra", "Caja");
@@ -287,19 +400,121 @@ namespace PasteleriaNancys.Infrastructure.Data
             // ==========================================
             // ESQUEMA: Web (Pedidos)
             // ==========================================
-            modelBuilder.Entity<PedidoWeb>(entity =>
+            modelBuilder.Entity<PedidoCliente>(entity =>
             {
-                entity.ToTable("PedidoWeb", "Web");
+                entity.ToTable("Pedido_Cliente", "Web");
                 entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasColumnName("IdPedido");
                 entity.Property(e => e.NombreCliente).IsRequired().HasMaxLength(150);
-                entity.Property(e => e.Telefono).IsRequired().HasMaxLength(50);
-                entity.Property(e => e.FechaEntrega).IsRequired();
-                entity.Property(e => e.Estado).IsRequired().HasMaxLength(50);
+                entity.Property(e => e.WhatsApp).IsRequired().HasMaxLength(20);
+                entity.Property(e => e.FechaSolicitud).IsRequired().HasDefaultValueSql("SYSUTCDATETIME()");
+                entity.Property(e => e.FechaEntregaSolicitada).HasColumnName("FechaEntrega_Solicitada").IsRequired();
+                entity.Property(e => e.TotalCotizado).HasColumnType("decimal(10,2)").IsRequired();
+                entity.Property(e => e.Estado).IsRequired().HasMaxLength(20).HasDefaultValue("Pendiente QR");
+                entity.Property(e => e.CodigoQrReferencia).HasColumnName("CodigoQR_Referencia").HasMaxLength(100);
+                entity.Property(e => e.Observaciones).HasMaxLength(500);
+                entity.Property(e => e.IdUsuarioVendedora).HasColumnName("IdUsuario_Vendedora");
 
-                // Configuración de precisión decimal para dinero
-                entity.Property(e => e.Total)
-                    .HasColumnType("decimal(10,2)")
-                    .IsRequired();
+                // IdUsuario_Vendedora no tiene FK física en la BD real (cross-schema, sin FK física,
+                // mismo patrón que Turno.IdUsuario_Responsable) — la lectura cruzada con
+                // Seguridad.Usuario se resuelve a nivel de aplicación, no de EF.
+            });
+
+            modelBuilder.Entity<PedidoConfiguracion>(entity =>
+            {
+                entity.ToTable("Pedido_Configuracion", "Web");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasColumnName("IdConfiguracion");
+                entity.Property(e => e.IdItemProductoBase).HasColumnName("IdItem_ProductoBase");
+                entity.Property(e => e.IdInsumoSaborMasa).HasColumnName("IdInsumo_SaborMasa");
+                entity.Property(e => e.IdInsumoRelleno).HasColumnName("IdInsumo_Relleno");
+                entity.Property(e => e.SaborMasa).IsRequired().HasMaxLength(80);
+                entity.Property(e => e.TipoRelleno).IsRequired().HasMaxLength(80);
+                entity.Property(e => e.TamanoRacion).HasMaxLength(30);
+                entity.Property(e => e.ColorDecoracion).HasMaxLength(50);
+                entity.Property(e => e.DedicatoriaDetalle).HasColumnName("Dedicatoria_Detalle");
+                entity.Property(e => e.ImagenReferenciaUrl).HasColumnName("ImagenReferencia_URL").HasMaxLength(500);
+                entity.Property(e => e.PorcentajeAnticipo).HasColumnName("Porcentaje_Anticipo").HasColumnType("decimal(5,2)");
+                entity.Property(e => e.TipoMasa).HasMaxLength(20);
+                entity.Property(e => e.TipoCrema).HasMaxLength(20);
+                entity.Property(e => e.IdInsumoCrema).HasColumnName("IdInsumo_Crema");
+                entity.Property(e => e.IdInsumoColorDecoracion).HasColumnName("IdInsumo_ColorDecoracion");
+                entity.Property(e => e.CantidadVelasNormales).IsRequired().HasDefaultValue(0);
+                entity.Property(e => e.VelaNumerica).HasMaxLength(10);
+
+                entity.ToTable(t =>
+                {
+                    t.HasCheckConstraint("CK_Web_PedidoConfiguracion_TipoMasa",
+                        "[TipoMasa] IS NULL OR [TipoMasa] IN ('Vainilla','Chocolate','Mixto')");
+                    t.HasCheckConstraint("CK_Web_PedidoConfiguracion_TipoCrema",
+                        "[TipoCrema] IS NULL OR [TipoCrema] IN ('Mascrean','CremaPil','Fondant')");
+                });
+
+                entity.HasOne(d => d.Pedido)
+                    .WithOne(p => p.Configuracion)
+                    .HasForeignKey<PedidoConfiguracion>(d => d.IdPedido)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                // IdItem_ProductoBase, IdInsumo_SaborMasa, IdInsumo_Relleno, IdInsumo_Crema e
+                // IdInsumo_ColorDecoracion no tienen FK física en la BD real (cross-schema, sin FK física,
+                // mismo patrón que Venta_Detalle.IdItem) — la lectura cruzada con Inventario.Item_Catalogo
+                // se resuelve a nivel de aplicación, no de EF.
+            });
+
+            modelBuilder.Entity<TablaPrecioPorciones>(entity =>
+            {
+                entity.ToTable("Tabla_Precio_Porciones", "Web");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasColumnName("IdTablaPrecio");
+                entity.Property(e => e.NumeroPorciones).IsRequired();
+                entity.Property(e => e.Precio).HasColumnType("decimal(10,2)").IsRequired();
+                entity.Property(e => e.Descripcion).HasMaxLength(50);
+                entity.Property(e => e.Activo).IsRequired().HasDefaultValue(true);
+
+                // Cada torta personalizable tiene su propia tabla de precios por porciones (antes era
+                // una sola tabla global compartida) — sin FK física porque IdItemTerminado apunta a
+                // Inventario.Item_Catalogo (cross-schema), mismo patrón que el resto del sistema.
+                entity.HasIndex(e => new { e.IdItemTerminado, e.NumeroPorciones }).IsUnique();
+
+                // Los 9 valores originales quedaron sembrados por SQL en la migración
+                // AsociarTablaPrecioPorcionesAProducto (no vía HasData: apuntan a filas reales de
+                // Item_Catalogo creadas en vivo, cuyo Id no existe todavía cuando se escribe esta
+                // migración).
+            });
+
+            modelBuilder.Entity<PagoQr>(entity =>
+            {
+                entity.ToTable("Pago_QR", "Web");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasColumnName("IdPago");
+                entity.Property(e => e.FechaGeneracion).IsRequired().HasDefaultValueSql("SYSUTCDATETIME()");
+                entity.Property(e => e.MontoSolicitado).HasColumnType("decimal(10,2)").IsRequired();
+                entity.Property(e => e.MontoConfirmado).HasColumnType("decimal(10,2)");
+                entity.Property(e => e.Diferencia).HasColumnType("decimal(10,2)");
+                entity.Property(e => e.CanalPago).HasMaxLength(50);
+                entity.Property(e => e.CodigoRespuestaBanco).HasMaxLength(100);
+                entity.Property(e => e.Estado).IsRequired().HasMaxLength(15).HasDefaultValue("Pendiente");
+
+                entity.HasOne(d => d.Pedido)
+                    .WithMany(p => p.PagosQr)
+                    .HasForeignKey(d => d.IdPedido)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<PortafolioImagen>(entity =>
+            {
+                entity.ToTable("Portafolio_Imagen", "Web");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasColumnName("IdPortafolioImagen");
+                entity.Property(e => e.Categoria).IsRequired().HasMaxLength(30);
+                entity.Property(e => e.ImagenUrl).IsRequired().HasMaxLength(500);
+                entity.Property(e => e.Descripcion).HasMaxLength(300);
+                entity.Property(e => e.Orden).IsRequired().HasDefaultValue(0);
+                entity.Property(e => e.Activo).IsRequired().HasDefaultValue(true);
+                entity.Property(e => e.FechaCreacion).IsRequired().HasDefaultValueSql("SYSUTCDATETIME()");
+
+                entity.ToTable(t => t.HasCheckConstraint("CK_Web_PortafolioImagen_Categoria",
+                    "[Categoria] IN ('Bodas','QuinceAnos','Bautizos','BabyShowers','CumpleanosEspeciales','TortasTematicas')"));
             });
         }
     }

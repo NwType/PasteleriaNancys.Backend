@@ -17,6 +17,12 @@ namespace PasteleriaNancys.Api.Controllers
             _alertaService = alertaService;
         }
 
+        [HttpGet("panel")]
+        public async Task<ActionResult<List<InsumoCriticoDto>>> ObtenerPanel()
+        {
+            return Ok(await _alertaService.ConsultarPanelAsync());
+        }
+
         [HttpGet("insumos-criticos")]
         public async Task<ActionResult<List<InsumoCriticoDto>>> ObtenerInsumosCriticos()
         {
@@ -27,6 +33,12 @@ namespace PasteleriaNancys.Api.Controllers
         public async Task<ActionResult<List<ProductoAfectadoDto>>> ObtenerProductosAfectados(Guid idInsumo)
         {
             return Ok(await _alertaService.ConsultarProductosAfectadosAsync(idInsumo));
+        }
+
+        [HttpGet("pedidos-afectados/{idInsumo:guid}")]
+        public async Task<ActionResult<List<PedidoAfectadoDto>>> ObtenerPedidosAfectados(Guid idInsumo)
+        {
+            return Ok(await _alertaService.ConsultarPedidosAfectadosAsync(idInsumo));
         }
     }
 }

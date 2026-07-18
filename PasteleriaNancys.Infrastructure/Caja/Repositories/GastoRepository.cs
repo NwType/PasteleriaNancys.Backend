@@ -24,6 +24,7 @@ namespace PasteleriaNancys.Infrastructure.Caja.Repositories
             await _context.GastosExtra.AddAsync(gasto);
 
         public async Task GuardarCambiosAsync() =>
-            await _context.SaveChangesAsync();
+            await _context.GuardarConControlDeConcurrenciaAsync(
+                "El turno fue modificado por otro gasto al mismo tiempo. Vuelva a intentarlo.");
     }
 }

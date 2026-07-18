@@ -79,11 +79,18 @@ namespace PasteleriaNancys.Application.Caja.Services
                 throw new ReglaNegocioException("El turno ya se encuentra cerrado.");
             }
 
+            if (!request.MontoFisicoContado.HasValue || request.MontoFisicoContado.Value < 0)
+            {
+                throw new ReglaNegocioException("Debe indicar el monto físico contado y no puede ser negativo.");
+            }
+
+            var montoFisicoContado = request.MontoFisicoContado.Value;
             var totalEsperado = CalcularTotalEsperado(turno);
-            var diferencia = request.MontoFisicoContado - totalEsperado;
+            var diferencia = montoFisicoContado - totalEsperado;
 
             turno.Estado = "Cerrado";
             turno.FechaCierre = DateTime.UtcNow;
+            turno.MontoFisicoContado = montoFisicoContado;
             turno.DiferenciaArqueo = diferencia;
 
             await _turnoRepository.GuardarCambiosAsync();
@@ -94,7 +101,7 @@ namespace PasteleriaNancys.Application.Caja.Services
             {
                 IdTurno = turno.Id,
                 TotalEsperado = totalEsperado,
-                MontoFisicoContado = request.MontoFisicoContado,
+                MontoFisicoContado = montoFisicoContado,
                 DiferenciaArqueo = diferencia,
                 DiferenciaSignificativa = diferenciaSignificativa,
                 Estado = turno.Estado,
@@ -156,6 +163,7 @@ namespace PasteleriaNancys.Application.Caja.Services
             SaldoInicial = turno.SaldoInicial,
             TotalIngresosSistema = turno.TotalIngresosSistema,
             TotalGastosExtras = turno.TotalGastosExtras,
+            MontoFisicoContado = turno.MontoFisicoContado,
             DiferenciaArqueo = turno.DiferenciaArqueo,
             Estado = turno.Estado
         };

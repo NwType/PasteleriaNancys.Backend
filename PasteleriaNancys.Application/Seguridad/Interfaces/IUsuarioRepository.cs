@@ -7,6 +7,7 @@ namespace PasteleriaNancys.Application.Seguridad.Interfaces
         Task<Usuario?> ObtenerPorIdAsync(Guid id);
         Task<Usuario?> ObtenerPorCorreoAsync(string correo);
         Task<List<Usuario>> ObtenerTodosAsync();
+        Task<bool> ExisteAlgunoAsync();
         Task AgregarAsync(Usuario usuario);
         Task GuardarCambiosAsync();
     }

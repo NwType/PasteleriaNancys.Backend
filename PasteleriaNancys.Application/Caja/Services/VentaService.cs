@@ -58,11 +58,12 @@ namespace PasteleriaNancys.Application.Caja.Services
 
             var idVenta = Guid.NewGuid();
             var detalles = new List<VentaDetalle>();
+            var preciosPorItem = new Dictionary<Guid, decimal>();
             decimal total = 0;
 
             foreach (var producto in request.Productos)
             {
-                _ = await _itemCatalogoRepository.ObtenerPorIdAsync(producto.IdItem)
+                var item = await _itemCatalogoRepository.ObtenerPorIdAsync(producto.IdItem)
                     ?? throw new NoEncontradoException($"No se encontró el ítem con id {producto.IdItem}.");
 
                 if (producto.Cantidad <= 0)
@@ -70,12 +71,10 @@ namespace PasteleriaNancys.Application.Caja.Services
                     throw new ReglaNegocioException("La cantidad debe ser mayor a cero.");
                 }
 
-                if (producto.PrecioUnitario < 0)
-                {
-                    throw new ReglaNegocioException("El precio unitario no puede ser negativo.");
-                }
-
-                total += producto.Cantidad * producto.PrecioUnitario;
+                // El precio siempre se toma del catálogo, nunca del request — el cliente/cajero no
+                // puede fijar el precio de venta, solo qué producto y cuánta cantidad.
+                preciosPorItem[producto.IdItem] = item.PrecioUnitario;
+                total += producto.Cantidad * item.PrecioUnitario;
             }
 
             if (total <= 0)
@@ -83,18 +82,28 @@ namespace PasteleriaNancys.Application.Caja.Services
                 throw new ReglaNegocioException("El total de la venta debe ser mayor a cero.");
             }
 
+            var consumos = new List<VentaDetalleLote>();
             foreach (var producto in request.Productos)
             {
-                await DescontarStockPepsAsync(producto.IdItem, producto.Cantidad);
-
-                detalles.Add(new VentaDetalle
+                var idDetalle = Guid.NewGuid();
+                var consumoDetalle = await DescontarStockPepsAsync(producto.IdItem, producto.Cantidad);
+                consumos.AddRange(consumoDetalle.Select(c => new VentaDetalleLote
                 {
                     Id = Guid.NewGuid(),
+                    IdVentaDetalle = idDetalle,
+                    IdLote = c.IdLote,
+                    CantidadDescontada = c.Cantidad
+                }));
+
+                var precioUnitario = preciosPorItem[producto.IdItem];
+                detalles.Add(new VentaDetalle
+                {
+                    Id = idDetalle,
                     IdVenta = idVenta,
                     IdItem = producto.IdItem,
                     Cantidad = producto.Cantidad,
-                    PrecioUnitario = producto.PrecioUnitario,
-                    Subtotal = producto.Cantidad * producto.PrecioUnitario
+                    PrecioUnitario = precioUnitario,
+                    Subtotal = producto.Cantidad * precioUnitario
                 });
             }
 
@@ -112,6 +121,7 @@ namespace PasteleriaNancys.Application.Caja.Services
             turno.TotalIngresosSistema += total;
 
             await _ventaRepository.AgregarAsync(venta);
+            await _loteRepository.RegistrarConsumoAsync(consumos);
             await _ventaRepository.GuardarCambiosAsync();
 
             return MapearDto(venta);
@@ -142,7 +152,7 @@ namespace PasteleriaNancys.Application.Caja.Services
 
             foreach (var detalle in venta.Detalles)
             {
-                await ReponerStockPepsAsync(detalle.IdItem, detalle.Cantidad);
+                await ReponerStockPepsAsync(detalle.Id, detalle.IdItem, detalle.Cantidad);
             }
 
             venta.Anulada = true;
@@ -154,10 +164,70 @@ namespace PasteleriaNancys.Application.Caja.Services
             return MapearDto(venta);
         }
 
-        private async Task DescontarStockPepsAsync(Guid idItem, decimal cantidadRequerida)
+        // Simulación 2026-07-13 (pedido explícito del usuario, presentación el mismo día): un
+        // pedido pagado por QR desde la vitrina pública todavía no tiene webhook bancario real
+        // (CLAUDE.md lo deja pendiente hasta conseguir permisos de API de pruebas de un banco) —
+        // mientras tanto, la confirmación manual/simulada de PagoQrService debe reflejarse igual
+        // en el arqueo del turno abierto, para que la demo muestre el flujo completo. A propósito
+        // NO se descuenta stock PEPS aquí: el pedido puede confirmarse antes de que la torta
+        // exista físicamente en Mercado Campesino (eso pasa recién en producción/despacho), así
+        // que forzar el descuento ahora rompería con un "stock insuficiente" falso.
+        public async Task RegistrarVentaSimuladaPorPedidoQrAsync(Guid idPedido, Guid? idItemProductoBase, decimal monto)
+        {
+            if (monto <= 0)
+            {
+                return;
+            }
+
+            var turno = (await _turnoRepository.ObtenerAbiertosAsync())
+                .OrderByDescending(t => t.FechaApertura)
+                .FirstOrDefault();
+
+            if (turno is null)
+            {
+                // Sin caja abierta no hay dónde reflejar el ingreso todavía — el pago QR queda
+                // confirmado igual, simplemente no impacta arqueo hasta que se abra un turno.
+                return;
+            }
+
+            var idVenta = Guid.NewGuid();
+            var detalles = new List<VentaDetalle>();
+
+            if (idItemProductoBase is not null)
+            {
+                detalles.Add(new VentaDetalle
+                {
+                    Id = Guid.NewGuid(),
+                    IdVenta = idVenta,
+                    IdItem = idItemProductoBase.Value,
+                    Cantidad = 1,
+                    PrecioUnitario = monto,
+                    Subtotal = monto
+                });
+            }
+
+            var venta = new VentaPos
+            {
+                Id = idVenta,
+                IdTurno = turno.Id,
+                FechaHora = DateTime.UtcNow,
+                TotalPagado = monto,
+                MetodoPago = "QR",
+                Anulada = false,
+                Detalles = detalles
+            };
+
+            turno.TotalIngresosSistema += monto;
+
+            await _ventaRepository.AgregarAsync(venta);
+            await _ventaRepository.GuardarCambiosAsync();
+        }
+
+        private async Task<List<(Guid IdLote, decimal Cantidad)>> DescontarStockPepsAsync(Guid idItem, decimal cantidadRequerida)
         {
             var lotes = await _loteRepository.ObtenerDisponiblesParaVentaAsync(idItem, UbicacionVenta);
 
+            var consumo = new List<(Guid IdLote, decimal Cantidad)>();
             var restante = cantidadRequerida;
             foreach (var lote in lotes)
             {
@@ -166,19 +236,36 @@ namespace PasteleriaNancys.Application.Caja.Services
                 var descuento = Math.Min(lote.CantidadDisponible, restante);
                 lote.CantidadDisponible -= descuento;
                 restante -= descuento;
+                consumo.Add((lote.Id, descuento));
             }
 
             if (restante > 0)
             {
                 throw new ReglaNegocioException("Stock insuficiente para este producto.");
             }
+
+            return consumo;
         }
 
-        private async Task ReponerStockPepsAsync(Guid idItem, decimal cantidad)
+        private async Task ReponerStockPepsAsync(Guid idVentaDetalle, Guid idItem, decimal cantidad)
         {
-            // No existe una tabla que vincule qué lote exacto se descontó por línea de
-            // venta, así que la reposición se aproxima devolviendo la cantidad al lote
-            // con la fecha de elaboración más reciente que tenga espacio disponible.
+            var consumosRegistrados = await _loteRepository.ObtenerConsumosPorVentaDetalleAsync(idVentaDetalle);
+            if (consumosRegistrados.Count > 0)
+            {
+                // Reversión exacta: se devuelve a cada lote precisamente lo que se le descontó.
+                foreach (var consumo in consumosRegistrados)
+                {
+                    var lote = await _loteRepository.ObtenerPorIdAsync(consumo.IdLote);
+                    if (lote is not null)
+                    {
+                        lote.CantidadDisponible += consumo.CantidadDescontada;
+                    }
+                }
+                return;
+            }
+
+            // Venta registrada antes de que existiera el registro de consumo por lote (dato
+            // legado): se aproxima reponiendo al lote más reciente con espacio disponible.
             var lotes = await _loteRepository.ObtenerParaReponerAsync(idItem);
 
             var restante = cantidad;

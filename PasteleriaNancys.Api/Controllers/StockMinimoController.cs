@@ -29,5 +29,21 @@ namespace PasteleriaNancys.Api.Controllers
         {
             return Ok(await _stockMinimoService.ConfigurarAsync(request));
         }
+
+        [HttpPatch("{id:guid}/desactivar")]
+        [Authorize(Roles = "Encargado de Almacen")]
+        public async Task<IActionResult> Desactivar(Guid id)
+        {
+            await _stockMinimoService.DesactivarAsync(id);
+            return NoContent();
+        }
+
+        [HttpDelete("{id:guid}")]
+        [Authorize(Roles = "Encargado de Almacen")]
+        public async Task<IActionResult> Eliminar(Guid id)
+        {
+            await _stockMinimoService.EliminarAsync(id);
+            return NoContent();
+        }
     }
 }

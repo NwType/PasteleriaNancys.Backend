@@ -11,6 +11,7 @@ namespace PasteleriaNancys.Application.Caja.Dtos
         public decimal SaldoInicial { get; set; }
         public decimal TotalIngresosSistema { get; set; }
         public decimal TotalGastosExtras { get; set; }
+        public decimal? MontoFisicoContado { get; set; }
         public decimal? DiferenciaArqueo { get; set; }
         public string Estado { get; set; } = string.Empty;
     }

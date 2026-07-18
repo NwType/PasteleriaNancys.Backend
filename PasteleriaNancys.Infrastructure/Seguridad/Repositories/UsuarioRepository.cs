@@ -23,6 +23,9 @@ namespace PasteleriaNancys.Infrastructure.Seguridad.Repositories
         public async Task<List<Usuario>> ObtenerTodosAsync() =>
             await _context.Usuarios.Include(u => u.Rol).AsNoTracking().ToListAsync();
 
+        public async Task<bool> ExisteAlgunoAsync() =>
+            await _context.Usuarios.AnyAsync();
+
         public async Task AgregarAsync(Usuario usuario) =>
             await _context.Usuarios.AddAsync(usuario);
 

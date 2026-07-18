@@ -20,5 +20,4 @@
     <ProjectReference Include="..\PasteleriaNancys.Application\PasteleriaNancys.Application.csproj" />
     <ProjectReference Include="..\PasteleriaNancys.Infrastructure\PasteleriaNancys.Infrastructure.csproj" />
   </ItemGroup>
-
 </Project>

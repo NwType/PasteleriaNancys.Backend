@@ -15,6 +15,8 @@ namespace PasteleriaNancys.Infrastructure.Inventario
             services.AddScoped<IStockMinimoRepository, StockMinimoRepository>();
             services.AddScoped<IRecetaRepository, RecetaRepository>();
             services.AddScoped<IEventoFestivoRepository, EventoFestivoRepository>();
+            services.AddScoped<IHorneadaRepository, HorneadaRepository>();
+            services.AddScoped<IConsumoInsumoRepository, ConsumoInsumoRepository>();
 
             return services;
         }

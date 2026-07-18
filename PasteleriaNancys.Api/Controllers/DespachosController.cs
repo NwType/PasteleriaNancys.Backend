@@ -30,22 +30,22 @@ namespace PasteleriaNancys.Api.Controllers
         }
 
         [HttpPost]
-        [Authorize(Roles = "Encargado de Almacen")]
+        [Authorize(Roles = "Encargado de Almacen,Administrador")]
         public async Task<ActionResult<ViajeDto>> CrearViaje(CrearViajeRequest request)
         {
             var viaje = await _despachoService.CrearViajeAsync(request);
             return CreatedAtAction(nameof(ObtenerPorId), new { id = viaje.Id }, viaje);
         }
 
-        [HttpPost("{id:guid}/lotes")]
-        [Authorize(Roles = "Encargado de Almacen")]
-        public async Task<ActionResult<ViajeDto>> AgregarLote(Guid id, AgregarLoteAlViajeRequest request)
+        [HttpPost("{id:guid}/productos")]
+        [Authorize(Roles = "Encargado de Almacen,Administrador")]
+        public async Task<ActionResult<ViajeDto>> AgregarProducto(Guid id, AgregarProductoAlViajeRequest request)
         {
-            return Ok(await _despachoService.AgregarLoteAsync(id, request));
+            return Ok(await _despachoService.AgregarProductoAsync(id, request));
         }
 
         [HttpPatch("{id:guid}/confirmar-entrega")]
-        [Authorize(Roles = "Encargado de Almacen")]
+        [Authorize(Roles = "Vendedora,Administrador,Encargado de Almacen")]
         public async Task<ActionResult<ViajeDto>> ConfirmarEntrega(Guid id)
         {
             return Ok(await _despachoService.ConfirmarEntregaAsync(id));

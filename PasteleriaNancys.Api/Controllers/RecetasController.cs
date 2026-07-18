@@ -31,6 +31,13 @@ namespace PasteleriaNancys.Api.Controllers
             return Ok(receta);
         }
 
+        [HttpPost("multiple")]
+        [Authorize(Roles = "Encargado de Almacen")]
+        public async Task<ActionResult<List<RecetaItemDto>>> CrearVarias(CrearRecetaMultipleRequest request)
+        {
+            return Ok(await _recetaService.CrearVariasAsync(request));
+        }
+
         [HttpDelete("{id:guid}")]
         [Authorize(Roles = "Encargado de Almacen")]
         public async Task<IActionResult> Eliminar(Guid id)

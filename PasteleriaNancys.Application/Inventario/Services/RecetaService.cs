@@ -58,6 +58,56 @@ namespace PasteleriaNancys.Application.Inventario.Services
             return MapearDto(receta);
         }
 
+        public async Task<List<RecetaItemDto>> CrearVariasAsync(CrearRecetaMultipleRequest request)
+        {
+            var itemTerminado = await _itemCatalogoRepository.ObtenerPorIdAsync(request.IdItemTerminado)
+                ?? throw new NoEncontradoException($"No se encontró el ítem con id {request.IdItemTerminado}.");
+
+            if (itemTerminado.Tipo != "Terminado")
+            {
+                throw new ReglaNegocioException("El ítem terminado debe ser de tipo 'Terminado'.");
+            }
+
+            var creadas = new List<RecetaItemDto>();
+
+            foreach (var linea in request.Lineas)
+            {
+                if (linea.CantidadRequerida <= 0)
+                {
+                    throw new ReglaNegocioException("La cantidad requerida debe ser mayor a cero en todas las filas.");
+                }
+
+                var itemInsumo = await _itemCatalogoRepository.ObtenerPorIdAsync(linea.IdItemInsumo)
+                    ?? throw new NoEncontradoException($"No se encontró el ítem con id {linea.IdItemInsumo}.");
+
+                if (itemInsumo.Tipo != "MateriaPrima")
+                {
+                    throw new ReglaNegocioException($"'{itemInsumo.Nombre}' debe ser un insumo de tipo 'MateriaPrima'.");
+                }
+
+                if (await _recetaRepository.ObtenerPorParAsync(request.IdItemTerminado, linea.IdItemInsumo) is not null)
+                {
+                    // Ya existe esa combinación producto+insumo — se omite en vez de fallar todo el lote.
+                    continue;
+                }
+
+                var receta = new RecetaItem
+                {
+                    Id = Guid.NewGuid(),
+                    IdItemTerminado = request.IdItemTerminado,
+                    IdItemInsumo = linea.IdItemInsumo,
+                    CantidadRequerida = linea.CantidadRequerida
+                };
+
+                await _recetaRepository.AgregarAsync(receta);
+                creadas.Add(MapearDto(receta));
+            }
+
+            await _recetaRepository.GuardarCambiosAsync();
+
+            return creadas;
+        }
+
         public async Task<List<RecetaItemDto>> ObtenerPorProductoTerminadoAsync(Guid idItemTerminado)
         {
             var recetas = await _recetaRepository.ObtenerPorProductoTerminadoAsync(idItemTerminado);

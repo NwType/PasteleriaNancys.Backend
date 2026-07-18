@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using PasteleriaNancys.Application.Inventario.Interfaces;
+using PasteleriaNancys.Domain.Caja;
 using PasteleriaNancys.Domain.Inventario;
 using PasteleriaNancys.Infrastructure.Data;
 
@@ -17,8 +18,10 @@ namespace PasteleriaNancys.Infrastructure.Inventario.Repositories
         public async Task<LotePeps?> ObtenerPorIdAsync(Guid id) =>
             await _context.LotesPeps.FirstOrDefaultAsync(l => l.Id == id);
 
+        // Sin AsNoTracking a propósito: LoteService.ObtenerTodosAsync sincroniza y persiste el
+        // estado vigente (Crítico/Baja por vencimiento) sobre estas mismas entidades.
         public async Task<List<LotePeps>> ObtenerTodosAsync() =>
-            await _context.LotesPeps.AsNoTracking().ToListAsync();
+            await _context.LotesPeps.ToListAsync();
 
         public async Task AgregarAsync(LotePeps lote) =>
             await _context.LotesPeps.AddAsync(lote);
@@ -37,6 +40,11 @@ namespace PasteleriaNancys.Infrastructure.Inventario.Repositories
                 .Where(l => l.IdItem == idItem && l.Estado != "Baja")
                 .SumAsync(l => (decimal?)l.CantidadDisponible) ?? 0m;
 
+        public async Task<decimal> ObtenerStockDisponiblePorUbicacionAsync(Guid idItem, string ubicacion) =>
+            await _context.LotesPeps
+                .Where(l => l.IdItem == idItem && l.Ubicacion == ubicacion && l.Estado != "Baja")
+                .SumAsync(l => (decimal?)l.CantidadDisponible) ?? 0m;
+
         public async Task<List<Guid>> ObtenerProveedoresPorItemAsync(Guid idItem) =>
             await _context.LotesPeps
                 .Where(l => l.IdItem == idItem && l.IdProveedor != null)
@@ -45,14 +53,21 @@ namespace PasteleriaNancys.Infrastructure.Inventario.Repositories
                 .Select(g => g.Key)
                 .ToListAsync();
 
-        public async Task<List<LotePeps>> ObtenerDisponiblesParaVentaAsync(Guid idItem, string ubicacion) =>
-            await _context.LotesPeps
+        // Bloqueo duro contra vencidos, independiente de si ya se sincronizó el Estado a "Baja"
+        // (LoteService.SincronizarEstadosVencidosAsync corre en otras pantallas, no siempre antes
+        // de una venta) — PEPS nunca debe poder vender ni consumir un lote ya caducado.
+        public async Task<List<LotePeps>> ObtenerDisponiblesParaVentaAsync(Guid idItem, string ubicacion)
+        {
+            var hoy = DateTime.UtcNow.Date;
+            return await _context.LotesPeps
                 .Where(l => l.IdItem == idItem
                     && l.Ubicacion == ubicacion
                     && l.Estado != "Baja"
-                    && l.CantidadDisponible > 0)
+                    && l.CantidadDisponible > 0
+                    && l.FechaCaducidad >= hoy)
                 .OrderBy(l => l.FechaElaboracion)
                 .ToListAsync();
+        }
 
         public async Task<List<LotePeps>> ObtenerParaReponerAsync(Guid idItem) =>
             await _context.LotesPeps
@@ -60,6 +75,14 @@ namespace PasteleriaNancys.Infrastructure.Inventario.Repositories
                     && l.Estado != "Baja"
                     && l.CantidadDisponible < l.CantidadInicial)
                 .OrderByDescending(l => l.FechaElaboracion)
+                .ToListAsync();
+
+        public async Task RegistrarConsumoAsync(List<VentaDetalleLote> consumos) =>
+            await _context.VentasDetalleLote.AddRangeAsync(consumos);
+
+        public async Task<List<VentaDetalleLote>> ObtenerConsumosPorVentaDetalleAsync(Guid idVentaDetalle) =>
+            await _context.VentasDetalleLote
+                .Where(c => c.IdVentaDetalle == idVentaDetalle)
                 .ToListAsync();
     }
 }

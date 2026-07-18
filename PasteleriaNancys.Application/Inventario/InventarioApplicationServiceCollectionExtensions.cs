@@ -16,6 +16,7 @@ namespace PasteleriaNancys.Application.Inventario
             services.AddScoped<IRecetaService, RecetaService>();
             services.AddScoped<IEventoFestivoService, EventoFestivoService>();
             services.AddScoped<IAlertaService, AlertaService>();
+            services.AddScoped<IConsumoService, ConsumoService>();
 
             return services;
         }

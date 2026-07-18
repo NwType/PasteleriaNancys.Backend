@@ -4,7 +4,6 @@ namespace PasteleriaNancys.Application.Inventario.Dtos
     {
         public Guid IdItem { get; set; }
         public Guid? IdProveedor { get; set; }
-        public string Ubicacion { get; set; } = string.Empty;
         public decimal CantidadInicial { get; set; }
         public DateTime FechaElaboracion { get; set; }
         public DateTime FechaCaducidad { get; set; }

@@ -12,8 +12,10 @@ namespace PasteleriaNancys.Domain.Caja
         public decimal SaldoInicial { get; set; }
         public decimal TotalIngresosSistema { get; set; }
         public decimal TotalGastosExtras { get; set; }
+        public decimal? MontoFisicoContado { get; set; }
         public decimal? DiferenciaArqueo { get; set; }
         public string Estado { get; set; } = string.Empty;
+        public byte[] RowVersion { get; set; } = Array.Empty<byte>();
 
         // Propiedades de navegación
         public ICollection<VentaPos> VentasPos { get; set; } = new List<VentaPos>();
