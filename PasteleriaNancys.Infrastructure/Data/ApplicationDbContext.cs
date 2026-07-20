@@ -29,6 +29,7 @@ namespace PasteleriaNancys.Infrastructure.Data
         public DbSet<LotePepsOrdenado> LotesPepsOrdenados { get; set; } = null!;
         public DbSet<Horneada> Horneadas { get; set; } = null!;
         public DbSet<ConsumoInsumo> ConsumosInsumo { get; set; } = null!;
+        public DbSet<Merma> Mermas { get; set; } = null!;
 
         // Esquema: Caja
         public DbSet<Turno> Turnos { get; set; } = null!;
@@ -120,7 +121,8 @@ namespace PasteleriaNancys.Infrastructure.Data
                         "[TipoMasa] IS NULL OR [TipoMasa] IN ('Vainilla','Chocolate','Mixto')");
                     t.HasCheckConstraint("CK_Inventario_Item_Categoria",
                         "([Tipo]='Terminado' AND [Categoria] IN ('Tortas Clásicas','Tortas Personalizables')) " +
-                        "OR ([Tipo]='MateriaPrima' AND [Categoria] IN ('Harinas y Secos','Lácteos y Cremas','Colorantes y Jaleas','Rellenos','Empaques'))");
+                        "OR ([Tipo]='MateriaPrima' AND [Categoria] IN ('Harinas y Secos','Lácteos y Cremas','Colorantes y Jaleas','Rellenos','Empaques')) " +
+                        "OR ([Tipo]='Intermedio' AND [Categoria] IN ('Bizcochos','Preparados'))");
                 });
 
                 entity.HasOne(e => e.InsumoRelleno)
@@ -219,7 +221,9 @@ namespace PasteleriaNancys.Infrastructure.Data
                 entity.ToTable("Receta_Item", "Inventario");
                 entity.HasKey(e => e.Id);
                 entity.Property(e => e.Id).HasColumnName("IdReceta");
-                entity.Property(e => e.CantidadRequerida).HasColumnType("decimal(8,2)").IsRequired();
+                // (12,6): la receta del bizcocho se guarda POR PORCIÓN (batida ÷ 200), y valores
+                // como el polvo de hornear (0.000375 kg/porción) se truncaban con la (8,2) original.
+                entity.Property(e => e.CantidadRequerida).HasColumnType("decimal(12,6)").IsRequired();
                 entity.HasIndex(e => new { e.IdItemTerminado, e.IdItemInsumo }).IsUnique();
 
                 entity.HasOne(d => d.ItemTerminado)
@@ -284,11 +288,50 @@ namespace PasteleriaNancys.Infrastructure.Data
                 entity.Property(e => e.Fecha).IsRequired().HasDefaultValueSql("SYSUTCDATETIME()");
                 // IdUsuarioRegistro: cross-schema hacia Seguridad.Usuario, sin FK física.
                 entity.Property(e => e.IdUsuarioRegistro).IsRequired();
+                // IdPedido: cross-schema hacia Web.Pedido_Cliente, sin FK física — trazabilidad
+                // del consumo que dispara producir una torta personalizable (2026-07-18).
+                entity.Property(e => e.IdPedido);
+                entity.HasIndex(e => e.IdPedido);
 
                 entity.HasOne(e => e.Horneada)
                     .WithMany(h => h.Consumos)
                     .HasForeignKey(e => e.IdHorneada)
                     .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(e => e.Item)
+                    .WithMany()
+                    .HasForeignKey(e => e.IdItem)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(e => e.Lote)
+                    .WithMany()
+                    .HasForeignKey(e => e.IdLote)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(e => e.LoteProducido)
+                    .WithMany()
+                    .HasForeignKey(e => e.IdLoteProducido)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<Merma>(entity =>
+            {
+                entity.ToTable("Merma", "Inventario");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasColumnName("IdMerma");
+                entity.Property(e => e.Cantidad).HasColumnType("decimal(8,2)").IsRequired();
+                entity.Property(e => e.TipoMerma).IsRequired().HasMaxLength(20);
+                entity.Property(e => e.Motivo).HasMaxLength(300);
+                entity.Property(e => e.Fecha).IsRequired().HasDefaultValueSql("SYSUTCDATETIME()");
+                // IdUsuarioRegistro: cross-schema hacia Seguridad.Usuario, sin FK física.
+                entity.Property(e => e.IdUsuarioRegistro).IsRequired();
+
+                entity.ToTable(t =>
+                {
+                    t.HasCheckConstraint("CK_Inventario_Merma_Cantidad", "[Cantidad] > 0");
+                    t.HasCheckConstraint("CK_Inventario_Merma_Tipo",
+                        "[TipoMerma] IN ('Insumo dañado','Producción fallida','Caducidad','Accidente','Otro')");
+                });
 
                 entity.HasOne(e => e.Item)
                     .WithMany()

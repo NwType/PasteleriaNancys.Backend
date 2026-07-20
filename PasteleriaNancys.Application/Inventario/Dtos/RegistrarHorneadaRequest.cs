@@ -4,10 +4,10 @@ namespace PasteleriaNancys.Application.Inventario.Dtos
     {
         public int CantidadBatidas { get; set; }
 
-        // No existe una fórmula fija de huevos por batida (confirmado por el usuario,
-        // 2026-07-13: "no encuentro la fórmula, lo vi en vivo" — varía 20-23 por batida,
-        // un poco más en la última por ser mitad y mitad). Por eso se ingresa a mano en
-        // cada horneada en vez de calcularse, a diferencia de harina/azúcar/maicena/etc.
+        // OBSOLETO (2026-07-17): el usuario fijó 25 huevos por batida, así que el huevo ahora es
+        // una línea más de la receta del bizcocho (0.125 huevo/porción × 200 porciones/batida
+        // = 25) y ya no se ingresa a mano. Se conserva la propiedad solo para no romper el
+        // contrato con el frontend actual; el backend la ignora.
         public decimal CantidadHuevos { get; set; }
 
         // Cuántas de las CantidadBatidas de arriba (sin contar la mixta estándar, que siempre

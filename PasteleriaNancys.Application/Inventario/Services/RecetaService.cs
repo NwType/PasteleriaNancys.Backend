@@ -29,15 +29,8 @@ namespace PasteleriaNancys.Application.Inventario.Services
             var itemInsumo = await _itemCatalogoRepository.ObtenerPorIdAsync(request.IdItemInsumo)
                 ?? throw new NoEncontradoException($"No se encontró el ítem con id {request.IdItemInsumo}.");
 
-            if (itemTerminado.Tipo != "Terminado")
-            {
-                throw new ReglaNegocioException("El ítem terminado debe ser de tipo 'Terminado'.");
-            }
-
-            if (itemInsumo.Tipo != "MateriaPrima")
-            {
-                throw new ReglaNegocioException("El insumo debe ser de tipo 'MateriaPrima'.");
-            }
+            ValidarTipos(itemTerminado, itemInsumo);
+            await ValidarSinCiclosAsync(itemTerminado, itemInsumo);
 
             if (await _recetaRepository.ObtenerPorParAsync(request.IdItemTerminado, request.IdItemInsumo) is not null)
             {
@@ -63,11 +56,6 @@ namespace PasteleriaNancys.Application.Inventario.Services
             var itemTerminado = await _itemCatalogoRepository.ObtenerPorIdAsync(request.IdItemTerminado)
                 ?? throw new NoEncontradoException($"No se encontró el ítem con id {request.IdItemTerminado}.");
 
-            if (itemTerminado.Tipo != "Terminado")
-            {
-                throw new ReglaNegocioException("El ítem terminado debe ser de tipo 'Terminado'.");
-            }
-
             var creadas = new List<RecetaItemDto>();
 
             foreach (var linea in request.Lineas)
@@ -80,10 +68,8 @@ namespace PasteleriaNancys.Application.Inventario.Services
                 var itemInsumo = await _itemCatalogoRepository.ObtenerPorIdAsync(linea.IdItemInsumo)
                     ?? throw new NoEncontradoException($"No se encontró el ítem con id {linea.IdItemInsumo}.");
 
-                if (itemInsumo.Tipo != "MateriaPrima")
-                {
-                    throw new ReglaNegocioException($"'{itemInsumo.Nombre}' debe ser un insumo de tipo 'MateriaPrima'.");
-                }
+                ValidarTipos(itemTerminado, itemInsumo);
+                await ValidarSinCiclosAsync(itemTerminado, itemInsumo);
 
                 if (await _recetaRepository.ObtenerPorParAsync(request.IdItemTerminado, linea.IdItemInsumo) is not null)
                 {
@@ -121,6 +107,64 @@ namespace PasteleriaNancys.Application.Inventario.Services
 
             _recetaRepository.Eliminar(receta);
             await _recetaRepository.GuardarCambiosAsync();
+        }
+
+        // Recetas anidadas (requisito del tutor, 2026-07-17): un producto Terminado o un
+        // Intermedio (bizcocho, preparado) puede tener receta, y sus componentes pueden ser
+        // materia prima u otros Intermedios — ej. Torta de Chocolate = Bizcocho de Chocolate
+        // (que a su vez tiene su receta de harina/azúcar/huevo) + crema + jalea.
+        private static void ValidarTipos(ItemCatalogo itemTerminado, ItemCatalogo itemInsumo)
+        {
+            if (itemTerminado.Tipo == "MateriaPrima")
+            {
+                throw new ReglaNegocioException(
+                    "La materia prima no tiene receta: solo productos terminados o intermedios (bizcochos, preparados).");
+            }
+
+            if (itemInsumo.Tipo == "Terminado")
+            {
+                throw new ReglaNegocioException(
+                    $"'{itemInsumo.Nombre}' es un producto terminado — un componente de receta debe ser materia prima o un intermedio.");
+            }
+        }
+
+        // Evita ciclos en el árbol de recetas (A usa B, B usa A) — con recetas anidadas un ciclo
+        // colgaría el descuento automático y la proyección, que recorren el árbol recursivamente.
+        private async Task ValidarSinCiclosAsync(ItemCatalogo itemTerminado, ItemCatalogo itemInsumo)
+        {
+            if (itemTerminado.Id == itemInsumo.Id)
+            {
+                throw new ReglaNegocioException("Un ítem no puede ser componente de su propia receta.");
+            }
+
+            if (itemInsumo.Tipo != "Intermedio")
+            {
+                return;
+            }
+
+            var visitados = new HashSet<Guid>();
+            var pendientes = new Stack<Guid>();
+            pendientes.Push(itemInsumo.Id);
+
+            while (pendientes.Count > 0)
+            {
+                var actual = pendientes.Pop();
+                if (!visitados.Add(actual))
+                {
+                    continue;
+                }
+
+                foreach (var linea in await _recetaRepository.ObtenerPorProductoTerminadoAsync(actual))
+                {
+                    if (linea.IdItemInsumo == itemTerminado.Id)
+                    {
+                        throw new ReglaNegocioException(
+                            $"No se puede agregar '{itemInsumo.Nombre}': su receta ya usa (directa o indirectamente) a '{itemTerminado.Nombre}', se formaría un ciclo.");
+                    }
+
+                    pendientes.Push(linea.IdItemInsumo);
+                }
+            }
         }
 
         private static RecetaItemDto MapearDto(RecetaItem receta) => new()

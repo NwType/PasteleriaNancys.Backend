@@ -9,7 +9,7 @@ namespace PasteleriaNancys.Application.Pedidos.Interfaces
         Task<PedidoDto> ConsultarEstadoAsync(string whatsApp, string codigoReferencia);
         Task<List<PedidoDto>> ObtenerPendientesAsync();
         Task<List<PedidoDto>> ObtenerTodosAsync(string? estado, DateTime? fechaEntrega);
-        Task<PedidoDto> CambiarEstadoAsync(Guid idPedido, CambiarEstadoPedidoRequest request);
+        Task<PedidoDto> CambiarEstadoAsync(Guid idPedido, Guid idUsuarioRegistro, CambiarEstadoPedidoRequest request);
         Task<PedidoDto> CancelarAsync(Guid idPedido, CancelarPedidoRequest request);
         Task<List<TablaPrecioPorcionesDto>> ObtenerTablaPrecioPorcionesAsync(Guid idItemTerminado);
     }

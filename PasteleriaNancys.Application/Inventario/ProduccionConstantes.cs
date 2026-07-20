@@ -1,10 +1,11 @@
 namespace PasteleriaNancys.Application.Inventario
 {
     /// <summary>
-    /// Reglas fijas de producción del bizcocho, dadas por el usuario (2026-07-13) y compartidas
-    /// entre el registro de Horneada (<see cref="Services.ConsumoService"/>) y la Proyección de
-    /// Horneado por sabor (<see cref="Reportes.Services.ReporteService"/>) — un solo lugar para
-    /// no duplicar estos números y arriesgar que diverjan.
+    /// Reglas fijas de producción del bizcocho, dadas por el usuario (2026-07-13, ajustadas
+    /// 2026-07-17 con el modelo de inventario automático) y compartidas entre el registro de
+    /// Horneada (<see cref="Services.ConsumoService"/>), el descuento por receta al producir
+    /// (<see cref="Services.DespachoService"/>) y la Proyección de Horneado
+    /// (Reportes.Services.ReporteService) — un solo lugar para no duplicar estos números.
     /// </summary>
     public static class ProduccionConstantes
     {
@@ -22,12 +23,43 @@ namespace PasteleriaNancys.Application.Inventario
         public const int BizcochosPorTorta = 2;
 
         /// <summary>
-        /// kg de caramelina por batida 100% chocolate adicional (más allá de la mixta estándar).
-        /// Derivado, no dato aparte del usuario: la mixta gasta 0.050kg para sus 10 bizcochos de
-        /// chocolate (mitad de la batida) — una batida completa de chocolate tiene el doble de
-        /// bizcochos de chocolate (20), así que gasta el doble (0.100kg). Confirmado por el
-        /// usuario 2026-07-13 que SÍ escala (a diferencia de la mixta, que es monto fijo).
+        /// El bizcocho como ítem Intermedio se mide en PORCIONES, no en unidades: la torta
+        /// estándar de 20 porciones lleva 2 bizcochos → un bizcocho estándar rinde 10 porciones,
+        /// y un bizcocho para torta de N porciones "vale" N/2 porciones. Así el mismo stock
+        /// sirve para tortas de cualquier tamaño sin una receta por tamaño (decisión 2026-07-17).
         /// </summary>
-        public const decimal CaramelinaKgPorBatidaChocolateExtra = 0.100m;
+        public const int PorcionesPorBizcocho = 10;
+
+        /// <summary>Una batida rinde 20 bizcochos × 10 porciones = 200 porciones de bizcocho.</summary>
+        public const int PorcionesPorBatida = BizcochosPorBatida * PorcionesPorBizcocho;
+
+        /// <summary>
+        /// Ítems Intermedios sembrados por la migración AgregarIntermediosMermasYRecetaAnidada —
+        /// la receta de la batida (por porción) vive en Receta_Item de estos dos ítems, ya no
+        /// hardcodeada en el código.
+        /// </summary>
+        public const string CodigoBizcochoVainilla = "PI-BIZC-001";
+        public const string CodigoBizcochoChocolate = "PI-BIZC-002";
+
+        /// <summary>
+        /// Vida útil asumida del bizcocho horneado (se hornea a las 16:00 para armar al día
+        /// siguiente; a los 3 días ya no se usa). Asunción marcada — ajustar si la encargada
+        /// da el dato real.
+        /// </summary>
+        public const int DiasVidaUtilBizcocho = 3;
+
+        // Armado de tortas personalizables (2026-07-18): como la combinación la elige el cliente
+        // por pedido, no hay Receta_Item fija — las cantidades del armado se derivan de las
+        // recetas fijas de la casa divididas entre sus 20 porciones (crema 0.40 kg, relleno
+        // 0.30 kg, jalea 0.10 kg por torta estándar). ASUNCIÓN marcada — ajustar con la dueña.
+
+        /// <summary>Kg de crema por porción (0.40 kg / 20 porciones de la torta estándar).</summary>
+        public const decimal KgCremaPorPorcion = 0.02m;
+
+        /// <summary>Kg de relleno por porción (0.30 kg / 20 porciones de la torta estándar).</summary>
+        public const decimal KgRellenoPorPorcion = 0.015m;
+
+        /// <summary>Kg de jalea/colorante por porción (0.10 kg / 20 porciones de la torta estándar).</summary>
+        public const decimal KgColorantePorPorcion = 0.005m;
     }
 }

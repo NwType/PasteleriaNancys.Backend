@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PasteleriaNancys.Application.Inventario.Dtos;
@@ -41,7 +42,9 @@ namespace PasteleriaNancys.Api.Controllers
         [Authorize(Roles = "Encargado de Almacen,Administrador")]
         public async Task<ActionResult<ViajeDto>> AgregarProducto(Guid id, AgregarProductoAlViajeRequest request)
         {
-            return Ok(await _despachoService.AgregarProductoAsync(id, request));
+            // El descuento automático por receta deja rastro de quién produjo (Consumo_Insumo).
+            var idUsuario = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+            return Ok(await _despachoService.AgregarProductoAsync(id, idUsuario, request));
         }
 
         [HttpPatch("{id:guid}/confirmar-entrega")]

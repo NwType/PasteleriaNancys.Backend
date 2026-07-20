@@ -258,20 +258,17 @@ namespace PasteleriaNancys.Application.Reportes.Services
 
         // Convierte "cuántas tortas hornear" en "cuánto insumo comprar", usando la Receta_Item
         // de cada torta (cantidad de insumo por unidad) y sumando entre tortas que comparten
-        // el mismo insumo (ej. harina en varias recetas).
+        // el mismo insumo (ej. harina en varias recetas). Con recetas anidadas (2026-07-17) la
+        // explosión es recursiva: un componente Intermedio (ej. 20 porciones de bizcocho) no se
+        // compra — se expande a SU receta (harina/azúcar/huevo por porción) hasta llegar a
+        // materia prima, que es lo que sí se compra.
         private async Task<List<InsumoRequeridoDto>> ExplotarInsumosNecesariosAsync(List<ProyeccionProductoDto> productos)
         {
             var necesidadPorInsumo = new Dictionary<Guid, decimal>();
 
             foreach (var producto in productos.Where(p => p.TotalHornear > 0))
             {
-                var receta = await _recetaRepository.ObtenerPorProductoTerminadoAsync(producto.IdItem);
-                foreach (var recetaItem in receta)
-                {
-                    var cantidad = recetaItem.CantidadRequerida * producto.TotalHornear;
-                    necesidadPorInsumo[recetaItem.IdItemInsumo] =
-                        necesidadPorInsumo.GetValueOrDefault(recetaItem.IdItemInsumo) + cantidad;
-                }
+                await AcumularNecesidadRecursivaAsync(producto.IdItem, producto.TotalHornear, necesidadPorInsumo, new HashSet<Guid>());
             }
 
             var resultado = new List<InsumoRequeridoDto>();
@@ -297,6 +294,34 @@ namespace PasteleriaNancys.Application.Reportes.Services
             }
 
             return resultado.OrderByDescending(i => i.CantidadFaltante).ToList();
+        }
+
+        // BOM multinivel: acumula materia prima; los Intermedios se expanden a su propia receta.
+        // "visitados" corta cualquier ciclo defensivamente (RecetaService ya los prohíbe al crear).
+        private async Task AcumularNecesidadRecursivaAsync(
+            Guid idItem, decimal cantidad, Dictionary<Guid, decimal> necesidadPorInsumo, HashSet<Guid> visitados)
+        {
+            if (!visitados.Add(idItem))
+            {
+                return;
+            }
+
+            var receta = await _recetaRepository.ObtenerPorProductoTerminadoAsync(idItem);
+            foreach (var linea in receta)
+            {
+                var requerido = linea.CantidadRequerida * cantidad;
+                if (linea.ItemInsumo.Tipo == "Intermedio")
+                {
+                    await AcumularNecesidadRecursivaAsync(linea.IdItemInsumo, requerido, necesidadPorInsumo, visitados);
+                }
+                else
+                {
+                    necesidadPorInsumo[linea.IdItemInsumo] =
+                        necesidadPorInsumo.GetValueOrDefault(linea.IdItemInsumo) + requerido;
+                }
+            }
+
+            visitados.Remove(idItem);
         }
     }
 }

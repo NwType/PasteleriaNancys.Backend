@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using PasteleriaNancys.Infrastructure.Data;
 
@@ -11,9 +12,11 @@ using PasteleriaNancys.Infrastructure.Data;
 namespace PasteleriaNancys.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260718010050_AgregarIntermediosMermasYRecetaAnidada")]
+    partial class AgregarIntermediosMermasYRecetaAnidada
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -223,9 +226,6 @@ namespace PasteleriaNancys.Infrastructure.Migrations
                     b.Property<Guid?>("IdLoteProducido")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<Guid?>("IdPedido")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<Guid>("IdUsuarioRegistro")
                         .HasColumnType("uniqueidentifier");
 
@@ -242,8 +242,6 @@ namespace PasteleriaNancys.Infrastructure.Migrations
                     b.HasIndex("IdLote");
 
                     b.HasIndex("IdLoteProducido");
-
-                    b.HasIndex("IdPedido");
 
                     b.ToTable("Consumo_Insumo", "Inventario");
                 });

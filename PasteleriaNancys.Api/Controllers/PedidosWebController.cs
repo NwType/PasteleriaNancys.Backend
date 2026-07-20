@@ -59,7 +59,10 @@ namespace PasteleriaNancys.Api.Controllers
         [Authorize(Roles = "Administrador")]
         public async Task<ActionResult<PedidoDto>> CambiarEstado(Guid id, CambiarEstadoPedidoRequest request)
         {
-            return Ok(await _pedidoService.CambiarEstadoAsync(id, request));
+            // Quién ejecuta el cambio — queda como IdUsuarioRegistro en los consumos que
+            // dispara el pase a "En Producción" de una torta personalizable.
+            var idUsuario = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+            return Ok(await _pedidoService.CambiarEstadoAsync(id, idUsuario, request));
         }
 
         [HttpPost("{id:guid}/cancelar")]

@@ -7,57 +7,36 @@ namespace PasteleriaNancys.Application.Inventario.Services
 {
     public class ConsumoService : IConsumoService
     {
-        // Ubicación de producción — mismo valor que DespachoService.UbicacionOrigen. Las batidas y
-        // el consumo manual de insumos de receta se descuentan del stock de San Mateo, no de la
-        // vitrina de venta (Mercado Campesino).
+        // Ubicación de producción — mismo valor que DespachoService.UbicacionOrigen. Las batidas,
+        // el descuento automático por receta y el consumo manual se descuentan del stock de
+        // San Mateo, no de la vitrina de venta (Mercado Campesino).
         private const string UbicacionProduccion = "San Mateo";
 
-        // Fórmula real por batida (dato dado por el usuario, 2026-07-13) — cantidades convertidas
-        // de gramos/mililitros a la unidad base (kg/litro) en la que se registran los insumos.
-        // Asunción marcada: se asume que la harina de la receta es "Harina de Trigo Especial 000"
-        // (MP-HARI-001), la misma que ya usa Receta_Item para Torta de Chocolate — el usuario no
-        // distinguió entre la 000 y la 00 (MP-HARI-002) al dar la fórmula de la batida.
-        private const string CodigoHarina = "MP-HARI-001";
-        private const string CodigoAzucar = "MP-HARI-004";
-        private const string CodigoMaicena = "MP-HARI-003";
-        private const string CodigoPolvoHornear = "MP-HARI-005";
-        private const string CodigoCaramelina = "MP-CARA-001";
-        private const string CodigoHuevo = "MP-HUEV-001";
-
-        private const decimal HarinaKgPorBatida = 1.764m;
-        private const decimal AzucarKgPorBatida = 1.372m;
-        private const decimal MaicenaKgPorBatida = 0.775m;
-        private const decimal PolvoHornearKgPorBatida = 0.075m;
-
-        // De todas las batidas del día, exactamente UNA — siempre la última — sale mitad y
-        // mitad (10 vainilla + 10 chocolate); el resto de las batidas del día son 100% vainilla.
-        // Por eso la caramelina NO escala con la cantidad de batidas: es un monto fijo por
-        // horneada (un solo "envase" se usa sin importar si hubo 1, 2 o 24 batidas ese día) —
-        // aclarado por el usuario 2026-07-13 después de dos correcciones previas. El envase real
-        // se pesa en kg (no en ml) — la receta dio "50ml" pero el insumo se registra y se
-        // descuenta en kg, igual que el resto de los insumos secos de esta fórmula.
-        private const decimal CaramelinaKgPorHorneada = 0.050m;
-
-        // A diferencia de los insumos de arriba, los huevos NO tienen una fórmula fija —
-        // el usuario confirmó que varía (20-23 por batida, un poco más en la última mitad-
-        // y-mitad) y que "así lo hacen, lo vi en vivo". Por eso CantidadHuevos se ingresa a
-        // mano en cada horneada en vez de multiplicarse por CantidadBatidas.
+        // La fórmula de la batida ya NO vive hardcodeada aquí: es la Receta_Item de los ítems
+        // Intermedios Bizcocho de Vainilla / Bizcocho de Chocolate, expresada POR PORCIÓN
+        // (batida real ÷ 200 porciones — sembrada por la migración con los datos del usuario,
+        // incluidos los 25 huevos fijos por batida = 0.125 huevo/porción y la caramelina del
+        // chocolate = 0.0005 kg/porción, que reproduce exactamente los montos anteriores:
+        // 0.050 kg por horneada estándar y 0.100 kg por batida 100% chocolate extra).
 
         private readonly IHorneadaRepository _horneadaRepository;
         private readonly IConsumoInsumoRepository _consumoRepository;
         private readonly IItemCatalogoRepository _itemCatalogoRepository;
         private readonly ILoteRepository _loteRepository;
+        private readonly IRecetaRepository _recetaRepository;
 
         public ConsumoService(
             IHorneadaRepository horneadaRepository,
             IConsumoInsumoRepository consumoRepository,
             IItemCatalogoRepository itemCatalogoRepository,
-            ILoteRepository loteRepository)
+            ILoteRepository loteRepository,
+            IRecetaRepository recetaRepository)
         {
             _horneadaRepository = horneadaRepository;
             _consumoRepository = consumoRepository;
             _itemCatalogoRepository = itemCatalogoRepository;
             _loteRepository = loteRepository;
+            _recetaRepository = recetaRepository;
         }
 
         public async Task<HorneadaDto> RegistrarHorneadaAsync(Guid idUsuarioRegistro, RegistrarHorneadaRequest request)
@@ -65,11 +44,6 @@ namespace PasteleriaNancys.Application.Inventario.Services
             if (request.CantidadBatidas <= 0)
             {
                 throw new ReglaNegocioException("La cantidad de batidas debe ser mayor a 0.");
-            }
-
-            if (request.CantidadHuevos <= 0)
-            {
-                throw new ReglaNegocioException("La cantidad de huevos usados debe ser mayor a 0.");
             }
 
             // La mixta estándar SIEMPRE existe (1 de las batidas del día) — el resto puede
@@ -83,6 +57,13 @@ namespace PasteleriaNancys.Application.Inventario.Services
                     "(la mixta estándar ya cuenta como una de las batidas del día).");
             }
 
+            var porcionesChocolate =
+                (ProduccionConstantes.BizcochosChocolatePorHorneadaEstandar
+                    + request.CantidadBatidasChocolateExtra * ProduccionConstantes.BizcochosPorBatida)
+                * ProduccionConstantes.PorcionesPorBizcocho;
+            var porcionesVainilla =
+                request.CantidadBatidas * ProduccionConstantes.PorcionesPorBatida - porcionesChocolate;
+
             var horneada = new Horneada
             {
                 Id = Guid.NewGuid(),
@@ -95,26 +76,33 @@ namespace PasteleriaNancys.Application.Inventario.Services
 
             await _horneadaRepository.AgregarAsync(horneada);
 
+            var bizcochoVainilla = await ObtenerBizcochoAsync(ProduccionConstantes.CodigoBizcochoVainilla);
+            var bizcochoChocolate = await ObtenerBizcochoAsync(ProduccionConstantes.CodigoBizcochoChocolate);
+
+            // Suma la receta de cada sabor multiplicada por sus porciones (los insumos base
+            // compartidos —harina, azúcar, huevo— se agregan en un solo descuento PEPS por insumo).
+            var necesidadPorInsumo = new Dictionary<Guid, decimal>();
+            await AcumularRecetaAsync(necesidadPorInsumo, bizcochoVainilla, porcionesVainilla);
+            await AcumularRecetaAsync(necesidadPorInsumo, bizcochoChocolate, porcionesChocolate);
+
             var consumos = new List<ConsumoInsumo>();
-            consumos.AddRange(await DescontarInsumoAsync(
-                CodigoHarina, HarinaKgPorBatida * request.CantidadBatidas, horneada.Id, idUsuarioRegistro));
-            consumos.AddRange(await DescontarInsumoAsync(
-                CodigoAzucar, AzucarKgPorBatida * request.CantidadBatidas, horneada.Id, idUsuarioRegistro));
-            consumos.AddRange(await DescontarInsumoAsync(
-                CodigoMaicena, MaicenaKgPorBatida * request.CantidadBatidas, horneada.Id, idUsuarioRegistro));
-            consumos.AddRange(await DescontarInsumoAsync(
-                CodigoPolvoHornear, PolvoHornearKgPorBatida * request.CantidadBatidas, horneada.Id, idUsuarioRegistro));
-            var caramelinaNecesaria = CaramelinaKgPorHorneada
-                + ProduccionConstantes.CaramelinaKgPorBatidaChocolateExtra * request.CantidadBatidasChocolateExtra;
-            consumos.AddRange(await DescontarInsumoAsync(
-                CodigoCaramelina, caramelinaNecesaria, horneada.Id, idUsuarioRegistro));
-            consumos.AddRange(await DescontarInsumoAsync(
-                CodigoHuevo, request.CantidadHuevos, horneada.Id, idUsuarioRegistro));
+            foreach (var (idInsumo, cantidad) in necesidadPorInsumo)
+            {
+                var insumo = await _itemCatalogoRepository.ObtenerPorIdAsync(idInsumo)
+                    ?? throw new ReglaNegocioException(
+                        "La receta del bizcocho referencia un insumo que ya no existe en el catálogo.");
+                consumos.AddRange(await DescontarStockAsync(insumo, cantidad, horneada.Id, idUsuarioRegistro, null, null));
+            }
 
             foreach (var consumo in consumos)
             {
                 await _consumoRepository.AgregarAsync(consumo);
             }
+
+            // La horneada PRODUCE stock de bizcocho: lotes PEPS de porciones en San Mateo, que
+            // luego el armado de tortas (Viaje/Despacho) descuenta automáticamente por receta.
+            await CrearLoteBizcochoAsync(bizcochoVainilla, porcionesVainilla);
+            await CrearLoteBizcochoAsync(bizcochoChocolate, porcionesChocolate);
 
             await _horneadaRepository.GuardarCambiosAsync();
 
@@ -138,12 +126,12 @@ namespace PasteleriaNancys.Application.Inventario.Services
             var item = await _itemCatalogoRepository.ObtenerPorIdAsync(request.IdItem)
                 ?? throw new NoEncontradoException($"No se encontró el ítem con id {request.IdItem}.");
 
-            if (item.Tipo != "MateriaPrima")
+            if (item.Tipo == "Terminado")
             {
-                throw new ReglaNegocioException("Solo se puede registrar consumo de insumos (materia prima).");
+                throw new ReglaNegocioException("Solo se puede registrar consumo de insumos o intermedios (no productos terminados).");
             }
 
-            var consumos = await DescontarStockAsync(item, request.Cantidad, null, idUsuarioRegistro, request.Motivo?.Trim());
+            var consumos = await DescontarStockAsync(item, request.Cantidad, null, idUsuarioRegistro, request.Motivo?.Trim(), null);
 
             foreach (var consumo in consumos)
             {
@@ -186,18 +174,174 @@ namespace PasteleriaNancys.Application.Inventario.Services
                 .ToList();
         }
 
-        private async Task<List<ConsumoInsumo>> DescontarInsumoAsync(
-            string codigoReferencia, decimal cantidadRequerida, Guid idHorneada, Guid idUsuarioRegistro)
+        /// <summary>
+        /// Descuento automático por receta (requisito del tutor, 2026-07-17): al producir
+        /// <paramref name="cantidad"/> unidades del producto, descuenta cada componente de su
+        /// Receta_Item del stock PEPS de San Mateo (bizcochos en porciones, cremas/jaleas en kg,
+        /// etc.), dejando la trazabilidad en Consumo_Insumo.IdLoteProducido. NO guarda cambios —
+        /// el llamador persiste todo junto en su propia transacción. Si un componente no alcanza,
+        /// lanza ReglaNegocioException y nada queda a medias.
+        /// </summary>
+        public async Task DescontarPorRecetaAsync(Guid idItemProducido, decimal cantidad, Guid idLoteProducido, Guid idUsuarioRegistro)
         {
-            var item = await _itemCatalogoRepository.ObtenerPorCodigoAsync(codigoReferencia)
-                ?? throw new ReglaNegocioException(
-                    $"No se encontró el insumo '{codigoReferencia}' — verifique que esté cargado en el catálogo.");
+            var receta = await _recetaRepository.ObtenerPorProductoTerminadoAsync(idItemProducido);
+            if (receta.Count == 0)
+            {
+                // Producto sin receta cargada (ej. personalizables): no hay nada que descontar
+                // automáticamente — el consumo se registra manual, como hasta ahora.
+                return;
+            }
 
-            return await DescontarStockAsync(item, cantidadRequerida, idHorneada, idUsuarioRegistro, null);
+            var producto = await _itemCatalogoRepository.ObtenerPorIdAsync(idItemProducido);
+
+            foreach (var linea in receta)
+            {
+                var componente = await _itemCatalogoRepository.ObtenerPorIdAsync(linea.IdItemInsumo)
+                    ?? throw new ReglaNegocioException(
+                        $"La receta de '{producto?.Nombre}' referencia un componente que ya no existe en el catálogo.");
+
+                var consumos = await DescontarStockAsync(
+                    componente,
+                    linea.CantidadRequerida * cantidad,
+                    null,
+                    idUsuarioRegistro,
+                    $"Producción: {producto?.Nombre} ×{cantidad:0.##}",
+                    idLoteProducido);
+
+                foreach (var consumo in consumos)
+                {
+                    await _consumoRepository.AgregarAsync(consumo);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Descuento automático al producir una torta PERSONALIZABLE (pedido del usuario,
+        /// 2026-07-18): estas tortas no tienen Receta_Item fija porque la combinación la elige
+        /// el cliente, así que los componentes salen de la configuración del pedido:
+        ///  - Bizcocho: NumeroPorciones según la masa elegida (Mixto = mitad vainilla, mitad
+        ///    chocolate), del stock PEPS de San Mateo producido por la Horneada.
+        ///  - Crema/relleno/colorante elegidos: kg por porción derivados de las recetas fijas
+        ///    de la casa (ProduccionConstantes, asunción marcada).
+        /// NO guarda cambios — el llamador (PedidoService) persiste todo junto: si algo no
+        /// alcanza, la excepción corta antes de guardar y el pedido no cambia de estado.
+        /// </summary>
+        public async Task DescontarPorPedidoPersonalizableAsync(
+            Guid idPedido,
+            string descripcionPedido,
+            int numeroPorciones,
+            string tipoMasa,
+            Guid idInsumoCrema,
+            Guid? idInsumoRelleno,
+            Guid? idInsumoColorante,
+            Guid idUsuarioRegistro)
+        {
+            if (numeroPorciones <= 0)
+            {
+                throw new ReglaNegocioException("El pedido no tiene un número de porciones válido.");
+            }
+
+            var motivo = $"Producción de pedido: {descripcionPedido}";
+
+            // Bizcocho según la masa elegida — mitad y mitad para Mixto (15 porciones → 7.5/7.5,
+            // los lotes de bizcocho aceptan decimales porque se corta capa por capa).
+            var porcionesVainilla = tipoMasa switch
+            {
+                "Vainilla" => (decimal)numeroPorciones,
+                "Chocolate" => 0m,
+                "Mixto" => numeroPorciones / 2m,
+                _ => throw new ReglaNegocioException($"Tipo de masa desconocido: '{tipoMasa}'.")
+            };
+            var porcionesChocolate = numeroPorciones - porcionesVainilla;
+
+            var consumos = new List<ConsumoInsumo>();
+
+            if (porcionesVainilla > 0)
+            {
+                var bizcocho = await ObtenerBizcochoAsync(ProduccionConstantes.CodigoBizcochoVainilla);
+                consumos.AddRange(await DescontarStockAsync(bizcocho, porcionesVainilla, null, idUsuarioRegistro, motivo, null, idPedido));
+            }
+
+            if (porcionesChocolate > 0)
+            {
+                var bizcocho = await ObtenerBizcochoAsync(ProduccionConstantes.CodigoBizcochoChocolate);
+                consumos.AddRange(await DescontarStockAsync(bizcocho, porcionesChocolate, null, idUsuarioRegistro, motivo, null, idPedido));
+            }
+
+            var componentes = new List<(Guid IdInsumo, decimal KgPorPorcion)> { (idInsumoCrema, ProduccionConstantes.KgCremaPorPorcion) };
+            if (idInsumoRelleno is not null)
+            {
+                componentes.Add((idInsumoRelleno.Value, ProduccionConstantes.KgRellenoPorPorcion));
+            }
+            if (idInsumoColorante is not null)
+            {
+                componentes.Add((idInsumoColorante.Value, ProduccionConstantes.KgColorantePorPorcion));
+            }
+
+            foreach (var (idInsumo, kgPorPorcion) in componentes)
+            {
+                var insumo = await _itemCatalogoRepository.ObtenerPorIdAsync(idInsumo)
+                    ?? throw new ReglaNegocioException("El pedido referencia un insumo que ya no existe en el catálogo.");
+                consumos.AddRange(await DescontarStockAsync(insumo, kgPorPorcion * numeroPorciones, null, idUsuarioRegistro, motivo, null, idPedido));
+            }
+
+            foreach (var consumo in consumos)
+            {
+                await _consumoRepository.AgregarAsync(consumo);
+            }
+        }
+
+        private async Task<ItemCatalogo> ObtenerBizcochoAsync(string codigoReferencia) =>
+            await _itemCatalogoRepository.ObtenerPorCodigoAsync(codigoReferencia)
+                ?? throw new ReglaNegocioException(
+                    $"No se encontró el ítem intermedio '{codigoReferencia}' — verifique que la migración de bizcochos esté aplicada.");
+
+        private async Task AcumularRecetaAsync(Dictionary<Guid, decimal> necesidad, ItemCatalogo bizcocho, decimal porciones)
+        {
+            if (porciones <= 0)
+            {
+                return;
+            }
+
+            var receta = await _recetaRepository.ObtenerPorProductoTerminadoAsync(bizcocho.Id);
+            if (receta.Count == 0)
+            {
+                throw new ReglaNegocioException(
+                    $"'{bizcocho.Nombre}' no tiene receta cargada — sin ella no se puede calcular el consumo de la batida.");
+            }
+
+            foreach (var linea in receta)
+            {
+                necesidad[linea.IdItemInsumo] =
+                    necesidad.GetValueOrDefault(linea.IdItemInsumo) + linea.CantidadRequerida * porciones;
+            }
+        }
+
+        private async Task CrearLoteBizcochoAsync(ItemCatalogo bizcocho, decimal porciones)
+        {
+            if (porciones <= 0)
+            {
+                return;
+            }
+
+            var ahora = DateTime.UtcNow;
+            await _loteRepository.AgregarAsync(new LotePeps
+            {
+                Id = Guid.NewGuid(),
+                IdItem = bizcocho.Id,
+                IdProveedor = null,
+                Ubicacion = UbicacionProduccion,
+                CantidadInicial = porciones,
+                CantidadDisponible = porciones,
+                FechaElaboracion = ahora,
+                FechaCaducidad = ahora.AddDays(ProduccionConstantes.DiasVidaUtilBizcocho),
+                Estado = "Óptimo",
+                FechaRegistro = ahora
+            });
         }
 
         private async Task<List<ConsumoInsumo>> DescontarStockAsync(
-            ItemCatalogo item, decimal cantidadRequerida, Guid? idHorneada, Guid idUsuarioRegistro, string? motivo)
+            ItemCatalogo item, decimal cantidadRequerida, Guid? idHorneada, Guid idUsuarioRegistro, string? motivo, Guid? idLoteProducido, Guid? idPedido = null)
         {
             var lotes = await _loteRepository.ObtenerDisponiblesParaVentaAsync(item.Id, UbicacionProduccion);
 
@@ -220,6 +364,8 @@ namespace PasteleriaNancys.Application.Inventario.Services
                     IdItem = item.Id,
                     Item = item,
                     IdLote = lote.Id,
+                    IdLoteProducido = idLoteProducido,
+                    IdPedido = idPedido,
                     CantidadDescontada = descuento,
                     Motivo = motivo,
                     Fecha = ahora,
@@ -229,8 +375,11 @@ namespace PasteleriaNancys.Application.Inventario.Services
 
             if (restante > 0)
             {
+                var sugerencia = item.Tipo == "Intermedio"
+                    ? " Registre primero la Horneada (o la preparación) que produce este intermedio."
+                    : string.Empty;
                 throw new ReglaNegocioException(
-                    $"Stock insuficiente de '{item.Nombre}' en {UbicacionProduccion}: faltan {restante:0.###} {item.UnidadMedida}.");
+                    $"Stock insuficiente de '{item.Nombre}' en {UbicacionProduccion}: faltan {restante:0.###} {item.UnidadMedida}.{sugerencia}");
             }
 
             return consumos;

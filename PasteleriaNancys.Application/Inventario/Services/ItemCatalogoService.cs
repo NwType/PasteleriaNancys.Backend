@@ -22,17 +22,25 @@ namespace PasteleriaNancys.Application.Inventario.Services
         // pregunta al usuario. Coincide con el valor real ya usado por la mayoría del catálogo.
         private const string UnidadMedidaTerminado = "unidad";
 
-        private static readonly string[] TiposValidos = { "Terminado", "MateriaPrima" };
+        // 'Intermedio' (2026-07-17): productos que se elaboran en casa y se consumen dentro de
+        // otras recetas (bizcochos, preparados) — tienen lotes PEPS propios en San Mateo, nunca
+        // se venden ni viajan a la vitrina.
+        private static readonly string[] TiposValidos = { "Terminado", "MateriaPrima", "Intermedio" };
         private static readonly string[] CategoriasPersonalizacionValidas = { "Relleno", "Crema", "Colorante" };
         private static readonly string[] TiposCremaValidos = { "Mascrean", "CremaPil", "Fondant" };
         private static readonly string[] TiposMasaValidos = { "Vainilla", "Chocolate", "Mixto" };
         private static readonly string[] CategoriasTerminadoValidas = { "Tortas Clásicas", "Tortas Personalizables" };
         private static readonly string[] CategoriasMateriaPrimaValidas =
             { "Harinas y Secos", "Lácteos y Cremas", "Colorantes y Jaleas", "Rellenos", "Empaques" };
+        private static readonly string[] CategoriasIntermedioValidas = { "Bizcochos", "Preparados" };
 
         // Lista cerrada — antes era texto libre y cualquier variante ("Kg", "kilo", "Kilogramos")
         // rompía la trazabilidad de recetas/consumo, que compara por igualdad exacta de string.
         private static readonly string[] UnidadesMedidaValidas = { "kg", "unidad" };
+
+        // El bizcocho se mide en porciones (ver ProduccionConstantes.PorcionesPorBizcocho);
+        // otros preparados pueden medirse en kg o unidades.
+        private static readonly string[] UnidadesMedidaIntermedioValidas = { "porción", "kg", "unidad" };
 
         // Derivados de las 6 jaleas reales cargadas en Colorantes y Jaleas (Frutilla=Rojo,
         // Naranja=Naranja, Limón=Verde, Piña=Amarillo, Uva=Morado, Chicle=Azul — decisión ya
@@ -44,6 +52,7 @@ namespace PasteleriaNancys.Application.Inventario.Services
 
         private const string PrefijoCodigoTerminado = "PT-TORTA-";
         private const string PrefijoCodigoMateriaPrima = "MP-";
+        private const string PrefijoCodigoIntermedio = "PI-";
 
         private readonly IItemCatalogoRepository _itemCatalogoRepository;
         private readonly ILoteRepository _loteRepository;
@@ -68,7 +77,7 @@ namespace PasteleriaNancys.Application.Inventario.Services
 
             if (!TiposValidos.Contains(request.Tipo))
             {
-                throw new ReglaNegocioException("El tipo debe ser 'Terminado' o 'MateriaPrima'.");
+                throw new ReglaNegocioException("El tipo debe ser 'Terminado', 'MateriaPrima' o 'Intermedio'.");
             }
 
             if (request.Tipo == "Terminado" && (request.NumeroPorciones is null || request.NumeroPorciones <= 0))
@@ -207,7 +216,7 @@ namespace PasteleriaNancys.Application.Inventario.Services
 
             if (!TiposValidos.Contains(request.Tipo))
             {
-                throw new ReglaNegocioException("El tipo debe ser 'Terminado' o 'MateriaPrima'.");
+                throw new ReglaNegocioException("El tipo debe ser 'Terminado', 'MateriaPrima' o 'Intermedio'.");
             }
 
             if (request.Tipo == "Terminado" && (request.NumeroPorciones is null || request.NumeroPorciones <= 0))
@@ -274,11 +283,17 @@ namespace PasteleriaNancys.Application.Inventario.Services
 
         private static void ValidarCategoria(string tipo, string categoria)
         {
-            var categoriasValidas = tipo == "Terminado" ? CategoriasTerminadoValidas : CategoriasMateriaPrimaValidas;
+            var categoriasValidas = tipo switch
+            {
+                "Terminado" => CategoriasTerminadoValidas,
+                "Intermedio" => CategoriasIntermedioValidas,
+                _ => CategoriasMateriaPrimaValidas
+            };
+
             if (!categoriasValidas.Contains(categoria))
             {
                 throw new ReglaNegocioException(
-                    $"Categoría inválida para {(tipo == "Terminado" ? "un producto terminado" : "un insumo")}. Use una de: {string.Join(", ", categoriasValidas)}.");
+                    $"Categoría inválida para el tipo '{tipo}'. Use una de: {string.Join(", ", categoriasValidas)}.");
             }
         }
 
@@ -302,15 +317,16 @@ namespace PasteleriaNancys.Application.Inventario.Services
 
         private static void ValidarUnidadMedida(string tipo, string? unidadMedida)
         {
-            if (tipo != "MateriaPrima")
+            if (tipo == "Terminado")
             {
-                return;
+                return; // Siempre se fuerza a "unidad" (una torta), no se valida lo enviado.
             }
 
-            if (unidadMedida is null || !UnidadesMedidaValidas.Contains(unidadMedida))
+            var unidadesValidas = tipo == "Intermedio" ? UnidadesMedidaIntermedioValidas : UnidadesMedidaValidas;
+            if (unidadMedida is null || !unidadesValidas.Contains(unidadMedida))
             {
                 throw new ReglaNegocioException(
-                    $"Unidad de medida inválida. Use una de: {string.Join(", ", UnidadesMedidaValidas)}.");
+                    $"Unidad de medida inválida. Use una de: {string.Join(", ", unidadesValidas)}.");
             }
         }
 
@@ -334,7 +350,12 @@ namespace PasteleriaNancys.Application.Inventario.Services
         // se migran.
         private async Task<string> GenerarCodigoAsync(string tipo)
         {
-            var prefijo = tipo == "Terminado" ? PrefijoCodigoTerminado : PrefijoCodigoMateriaPrima;
+            var prefijo = tipo switch
+            {
+                "Terminado" => PrefijoCodigoTerminado,
+                "Intermedio" => PrefijoCodigoIntermedio,
+                _ => PrefijoCodigoMateriaPrima
+            };
             var patron = new Regex($"^{Regex.Escape(prefijo)}(\\d+)$");
 
             var maximo = (await _itemCatalogoRepository.ObtenerTodosAsync())

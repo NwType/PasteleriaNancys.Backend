@@ -13,12 +13,18 @@ namespace PasteleriaNancys.Application.Inventario.Services
         private readonly IViajeRepository _viajeRepository;
         private readonly ILoteRepository _loteRepository;
         private readonly IItemCatalogoRepository _itemCatalogoRepository;
+        private readonly IConsumoService _consumoService;
 
-        public DespachoService(IViajeRepository viajeRepository, ILoteRepository loteRepository, IItemCatalogoRepository itemCatalogoRepository)
+        public DespachoService(
+            IViajeRepository viajeRepository,
+            ILoteRepository loteRepository,
+            IItemCatalogoRepository itemCatalogoRepository,
+            IConsumoService consumoService)
         {
             _viajeRepository = viajeRepository;
             _loteRepository = loteRepository;
             _itemCatalogoRepository = itemCatalogoRepository;
+            _consumoService = consumoService;
         }
 
         public async Task<ViajeDto> CrearViajeAsync(CrearViajeRequest request)
@@ -58,7 +64,7 @@ namespace PasteleriaNancys.Application.Inventario.Services
             return MapearDto(viaje);
         }
 
-        public async Task<ViajeDto> AgregarProductoAsync(Guid idViaje, AgregarProductoAlViajeRequest request)
+        public async Task<ViajeDto> AgregarProductoAsync(Guid idViaje, Guid idUsuarioRegistro, AgregarProductoAlViajeRequest request)
         {
             var viaje = await _viajeRepository.ObtenerPorIdAsync(idViaje)
                 ?? throw new NoEncontradoException($"No se encontró el viaje con id {idViaje}.");
@@ -74,6 +80,16 @@ namespace PasteleriaNancys.Application.Inventario.Services
             if (item.Tipo != "Terminado" || !item.Activo)
             {
                 throw new ReglaNegocioException("Solo se pueden agregar tortas (productos terminados activos) al viaje.");
+            }
+
+            // Las personalizables no viajan a vitrina: se hacen POR PEDIDO y su inventario se
+            // descuenta al pasar el pedido a "En Producción" (PedidoService). Antes esto pasaba
+            // en silencio sin descontar nada — creaba stock invisible (la vitrina/POS filtran
+            // personalizables) y sin consumo, pura inconsistencia (hallazgo 2026-07-18).
+            if (item.EsPersonalizable)
+            {
+                throw new ReglaNegocioException(
+                    $"'{item.Nombre}' es una torta personalizable: se produce por pedido (pasa a 'En Producción' en Pedidos), no se despacha a vitrina por viaje.");
             }
 
             if (request.Cantidad <= 0)
@@ -103,6 +119,12 @@ namespace PasteleriaNancys.Application.Inventario.Services
                 FechaRegistro = DateTime.UtcNow
             };
             await _loteRepository.AgregarAsync(loteOrigen);
+
+            // Inventario automático (requisito del tutor, 2026-07-17): armar estas tortas
+            // consume sus componentes según Receta_Item — porciones de bizcocho (horneadas antes
+            // vía Horneada), cremas, jaleas, rellenos — del stock PEPS de San Mateo. Si algo no
+            // alcanza, la excepción corta ANTES de guardar y no queda nada a medias.
+            await _consumoService.DescontarPorRecetaAsync(item.Id, request.Cantidad, loteOrigen.Id, idUsuarioRegistro);
 
             var detalle = new ViajeDetalle
             {

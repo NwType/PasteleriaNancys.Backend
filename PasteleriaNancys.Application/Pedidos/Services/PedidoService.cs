@@ -32,6 +32,7 @@ namespace PasteleriaNancys.Application.Pedidos.Services
         private readonly IItemCatalogoRepository _itemCatalogoRepository;
         private readonly ILoteRepository _loteRepository;
         private readonly ITablaPrecioPorcionesRepository _tablaPrecioPorcionesRepository;
+        private readonly IConsumoService _consumoService;
 
         public PedidoService(
             IPedidoRepository pedidoRepository,
@@ -39,7 +40,8 @@ namespace PasteleriaNancys.Application.Pedidos.Services
             IPagoQrService pagoQrService,
             IItemCatalogoRepository itemCatalogoRepository,
             ILoteRepository loteRepository,
-            ITablaPrecioPorcionesRepository tablaPrecioPorcionesRepository)
+            ITablaPrecioPorcionesRepository tablaPrecioPorcionesRepository,
+            IConsumoService consumoService)
         {
             _pedidoRepository = pedidoRepository;
             _pagoQrRepository = pagoQrRepository;
@@ -47,6 +49,7 @@ namespace PasteleriaNancys.Application.Pedidos.Services
             _itemCatalogoRepository = itemCatalogoRepository;
             _loteRepository = loteRepository;
             _tablaPrecioPorcionesRepository = tablaPrecioPorcionesRepository;
+            _consumoService = consumoService;
         }
 
         public Task<PedidoDto> CrearAsync(CrearPedidoWebRequest request) =>
@@ -309,7 +312,7 @@ namespace PasteleriaNancys.Application.Pedidos.Services
             return resultado;
         }
 
-        public async Task<PedidoDto> CambiarEstadoAsync(Guid idPedido, CambiarEstadoPedidoRequest request)
+        public async Task<PedidoDto> CambiarEstadoAsync(Guid idPedido, Guid idUsuarioRegistro, CambiarEstadoPedidoRequest request)
         {
             var pedido = await _pedidoRepository.ObtenerPorIdAsync(idPedido)
                 ?? throw new NoEncontradoException($"No se encontró el pedido con id {idPedido}.");
@@ -322,6 +325,28 @@ namespace PasteleriaNancys.Application.Pedidos.Services
             }
 
             pedido.Estado = request.NuevoEstado;
+
+            // Inventario automático de personalizables (pedido del usuario, 2026-07-18): entrar
+            // a producción descuenta lo que el cliente eligió — bizcocho según masa y porciones
+            // (del stock horneado en San Mateo) + crema/relleno/colorante. La transición
+            // Confirmado→En Producción solo puede ocurrir UNA vez (TransicionesValidas), así que
+            // no hay riesgo de doble descuento. Si falta stock, la excepción corta antes de
+            // guardar: el pedido sigue 'Confirmado' y el error dice qué comprar/hornear.
+            var config = pedido.Configuracion;
+            if (request.NuevoEstado == "En Producción" &&
+                config is { NumeroPorciones: > 0, TipoMasa: not null, IdInsumoCrema: not null })
+            {
+                await _consumoService.DescontarPorPedidoPersonalizableAsync(
+                    pedido.Id,
+                    $"{pedido.CodigoQrReferencia} — {config.SaborMasa} {config.NumeroPorciones}p de {pedido.NombreCliente}",
+                    config.NumeroPorciones.Value,
+                    config.TipoMasa,
+                    config.IdInsumoCrema.Value,
+                    config.IdInsumoRelleno,
+                    config.IdInsumoColorDecoracion,
+                    idUsuarioRegistro);
+            }
+
             await _pedidoRepository.GuardarCambiosAsync();
 
             return await MapearDtoConPagoAsync(pedido);
